@@ -13,7 +13,6 @@ import {
   validateEnvelope,
 } from "../envelope.js";
 import { buildAnswerReviewContext } from "../answer-review-context.js";
-import { resolveInstallTargetFromText } from "../install-target.js";
 
 const repoRoot = path.resolve(__dirname, "../../..");
 
@@ -1571,7 +1570,6 @@ test("workflow docs record the minimal metadata contract and developer notes", (
   const configurationList = readRepoFile(".agent/docs/customization/configuration-list.md");
   const skillsDocs = readRepoFile(".agent/docs/customization/skills.md");
   const existingRepoInstall = readRepoFile(".agent/docs/setup/install-existing-repository.md");
-  const installIssueTemplate = readMarkdownIssueTemplate(".github/ISSUE_TEMPLATE/install-sepo.md");
   const askIssueTemplate = readMarkdownIssueTemplate(".github/ISSUE_TEMPLATE/ask-sepo.md");
   const developerNotes = readRepoFile(".agent/docs/technical-details/developer-notes.md");
 
@@ -1615,23 +1613,8 @@ test("workflow docs record the minimal metadata contract and developer notes", (
   assert.match(existingRepoInstall, /Normal routes keep[\s\S]*GitHub auth resolver order/);
   assert.match(existingRepoInstall, /Install Sepo into another repository/);
   assert.match(existingRepoInstall, /source request issue[\s\S]*comment linking the install PR/);
-  assert.equal(installIssueTemplate.frontMatter.name, "Install Sepo into another repository");
-  assert.equal(
-    installIssueTemplate.frontMatter.about,
-    "Ask Sepo to open an install PR for a public target repository",
-  );
-  assert.equal(installIssueTemplate.frontMatter.title, "Install Sepo into target repository");
-  assert.equal(installIssueTemplate.frontMatter.labels, "agent");
-  assert.match(installIssueTemplate.body, /^@sepo-agent \/install\n/);
-  assert.match(installIssueTemplate.body, /## Target public repository URL/);
-  assert.match(installIssueTemplate.body, /Paste the public GitHub repository URL here/);
-  assert.match(installIssueTemplate.body, /## Notes/);
-  assert.doesNotMatch(String(installIssueTemplate.frontMatter.title || ""), /owner\/repo|OWNER\/REPO|<owner\/repo>/);
-  const defaultInstallTarget = resolveInstallTargetFromText(installIssueTemplate.body);
-  assert.equal(defaultInstallTarget.status, "missing");
-  assert.equal(defaultInstallTarget.targetRepo, "");
-  assert.equal(askIssueTemplate.frontMatter.name, "Ask Sepo");
-  assert.equal(askIssueTemplate.frontMatter.about, "Ask Sepo a question about this repository");
+  assert.equal(askIssueTemplate.frontMatter.name, "Ask Sepo agent");
+  assert.equal(askIssueTemplate.frontMatter.about, "Ask the Sepo agent a question about this repository");
   assert.equal(askIssueTemplate.frontMatter.title, "Ask Sepo: ");
   assert.equal(askIssueTemplate.frontMatter.labels, "agent");
   assert.match(askIssueTemplate.body, /^@sepo-agent \/answer\n/);

@@ -1,6 +1,6 @@
 ---
-name: Ask Sepo
-about: Ask Sepo a question about this repository
+name: Ask Sepo agent
+about: Ask the Sepo agent a question about this repository
 title: "Ask Sepo: "
 labels: agent
 ---
