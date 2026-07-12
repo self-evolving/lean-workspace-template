@@ -1,0 +1,51 @@
+name: Deploy Sepo site
+
+description: Deploy a built site artifact through the Sepo preview API.
+
+inputs:
+  artifact_id:
+    description: GitHub Actions artifact id for the built site.
+    required: true
+  canonical:
+    description: Set to true to deploy the repository default branch to its canonical site URL.
+    required: false
+    default: "false"
+  server_url:
+    description: Sepo preview API base URL.
+    required: false
+    default: https://preview-api.sepo.sh
+
+outputs:
+  url:
+    description: Deployed site URL.
+    value: ${{ steps.deploy.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy site
+      id: deploy
+      shell: bash
+      env:
+        ARTIFACT_ID: ${{ inputs.artifact_id }}
+        CANONICAL: ${{ inputs.canonical }}
+        SERVER_URL: ${{ inputs.server_url }}
+      run: |
+        set -euo pipefail
+        TOK=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sepo-preview" | jq -r '.value')
+        [[ "$TOK" != "null" && -n "$TOK" ]] || { echo "::error::OIDC token fetch failed"; exit 1; }
+        echo "::add-mask::$TOK"
+        RESP=$(curl -sS -X POST "$SERVER_URL/api/deploy/preview" -H 'Content-Type: application/json' \
+               --data "$(jq -nc --arg t "$TOK" --argjson a "$ARTIFACT_ID" --arg canonical "$CANONICAL" \
+                 '{oidc_token:$t,artifact_id:$a} + (if $canonical == "true" then {canonical:true} else {} end)')" \
+               -w '\n%{http_code}')
+        CODE=$(tail -n1 <<<"$RESP"); BODY=$(sed '$d' <<<"$RESP"); echo "$BODY"
+        [[ "$CODE" == 200 ]] || { echo "::error::deploy failed ($CODE)"; exit 1; }
+        URL=$(jq -r .url <<<"$BODY")
+        echo "url=$URL" >> "$GITHUB_OUTPUT"
+        if [[ "$CANONICAL" == "true" ]]; then
+          echo "### Canonical site: $URL" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "### Preview: $URL" >> "$GITHUB_STEP_SUMMARY"
+        fi

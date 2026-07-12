@@ -1,0 +1,29 @@
+{
+  "name": "blueprint",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "quartz": {
+    "name": "blueprint",
+    "displayName": "Blueprint",
+    "category": [
+      "transformer"
+    ],
+    "version": "1.0.0",
+    "quartzVersion": ">=5.0.0",
+    "dependencies": [],
+    "defaultOrder": 32,
+    "defaultEnabled": true,
+    "defaultOptions": {
+      "root": "blueprint"
+    },
+    "optionSchema": {
+      "root": {
+        "type": "string"
+      }
+    }
+  }
+}

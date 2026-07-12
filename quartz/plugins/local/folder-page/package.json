@@ -1,0 +1,44 @@
+{
+  "name": "folder-page",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "build": "mkdir -p dist && cp index.js dist/index.js && printf 'export { FolderPage } from \"../index.js\"\nexport default FolderPage\n' > dist/index.d.ts"
+  },
+  "quartz": {
+    "name": "folder-page",
+    "displayName": "folder-page",
+    "category": [
+      "pageType",
+      "component"
+    ],
+    "version": "1.0.0",
+    "quartzVersion": ">=5.0.0",
+    "dependencies": [],
+    "defaultOrder": 50,
+    "defaultEnabled": true,
+    "defaultOptions": {
+      "showFolderCount": true,
+      "showSubfolders": true,
+      "orderFromMeta": true
+    },
+    "optionSchema": {
+      "showFolderCount": {
+        "type": "boolean"
+      },
+      "showSubfolders": {
+        "type": "boolean"
+      },
+      "orderFromMeta": {
+        "type": "boolean"
+      },
+      "prefixFolders": {
+        "type": "boolean"
+      }
+    }
+  }
+}

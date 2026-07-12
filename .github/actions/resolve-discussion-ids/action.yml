@@ -1,0 +1,92 @@
+name: Resolve discussion IDs
+description: >-
+  Resolve the optional Discussions tab's SEPO_COMMENTS_REPO_ID /
+  SEPO_COMMENTS_CATEGORY_ID from the fixed SEPO_COMMENTS_REPO and
+  SEPO_COMMENTS_CATEGORY build environment, then export them for Quartz. Pinned
+  ID pairs win and skip the lookup. Every failure is a warning, not an error;
+  the Sepo drawer can still render Issues/Pulls without Discussion IDs.
+  Requires `discussions: read` on the workflow token. Run this after preparing
+  the SEPO_COMMENTS_* environment and before the build.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        # Pinned IDs win; nothing to resolve.
+        if [[ -n "${SEPO_COMMENTS_REPO_ID:-}" && -n "${SEPO_COMMENTS_CATEGORY_ID:-}" ]]; then
+          echo "SEPO_COMMENTS_REPO_ID/SEPO_COMMENTS_CATEGORY_ID already set; skipping lookup."
+          exit 0
+        fi
+        # Comments explicitly off; don't spend a request.
+        case "$(tr '[:upper:]' '[:lower:]' <<<"${SEPO_COMMENTS_ENABLED:-}")" in
+          0|false|no|off) echo "SEPO_COMMENTS_ENABLED is off; skipping lookup."; exit 0 ;;
+        esac
+        REPO="${SEPO_COMMENTS_REPO:-}"
+        CATEGORY="${SEPO_COMMENTS_CATEGORY:-}"
+        if [[ -z "$REPO" || -z "$CATEGORY" ]]; then
+          echo "::warning::comments: skipping optional Discussion ID resolution; SEPO_COMMENTS_REPO and SEPO_COMMENTS_CATEGORY are needed only for the Discussions tab"
+          exit 0
+        fi
+        if [[ ! "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+          echo "::warning::comments: SEPO_COMMENTS_REPO must use the owner/name format, got ${REPO}"
+          exit 0
+        fi
+        # first: 25 is exhaustive because GitHub caps repositories at 25
+        # discussion categories, so the lookup never needs pagination.
+        QUERY='query($owner: String!, $name: String!) {
+          repository(owner: $owner, name: $name) {
+            id
+            hasDiscussionsEnabled
+            discussionCategories(first: 25) { nodes { id name } }
+          }
+        }'
+        # Bounded retry so a transient 5xx/429/network blip cannot strip a
+        # build of its comments or fail a strict SEPO_COMMENTS_ENABLED=true
+        # build. Only transient-looking failures retry; deterministic ones warn
+        # immediately. Unknown transient phrasing degrades to warn-immediately.
+        RESULT=""
+        for attempt in 1 2 3; do
+          set +e
+          RESULT=$(timeout 30 gh api graphql -f query="$QUERY" \
+            -f owner="${REPO%%/*}" -f name="${REPO#*/}" 2>&1)
+          rc=$?
+          set -e
+          [[ $rc -eq 0 ]] && break
+          if [[ $rc -ne 124 ]] && ! grep -Eqi \
+              'HTTP (429|5[0-9][0-9])|rate limit|timed?[ -]?out|connection|dial tcp|no such host|TLS handshake|i/o timeout' \
+              <<<"$RESULT"; then
+            echo "::warning::comments: could not resolve ${REPO}: ${RESULT}"
+            exit 0
+          fi
+          if [[ $attempt -eq 3 ]]; then
+            echo "::warning::comments: could not resolve ${REPO} after ${attempt} attempts: ${RESULT}"
+            exit 0
+          fi
+          echo "comments: transient lookup failure (attempt ${attempt}): ${RESULT}; retrying in 5s"
+          sleep 5
+        done
+        if [[ "$(jq -r '.data.repository == null' <<<"$RESULT")" == "true" ]]; then
+          echo "::warning::comments: repository ${REPO} not found or not readable by the workflow token"
+          exit 0
+        fi
+        if [[ "$(jq -r '.data.repository.hasDiscussionsEnabled' <<<"$RESULT")" != "true" ]]; then
+          echo "::warning::comments: Discussions are not enabled on ${REPO}; the Sepo drawer can still render Issues/Pulls"
+          exit 0
+        fi
+        REPO_ID=$(jq -r '.data.repository.id' <<<"$RESULT")
+        CATEGORY_ID=$(jq -r --arg name "$CATEGORY" '
+          [.data.repository.discussionCategories.nodes[]
+            | select((.name == $name) or ((.name | ascii_downcase) == ($name | ascii_downcase)))]
+          | sort_by(.name != $name) | .[0].id // empty' <<<"$RESULT")
+        if [[ -z "$CATEGORY_ID" ]]; then
+          AVAILABLE=$(jq -r '[.data.repository.discussionCategories.nodes[].name] | join(", ")' <<<"$RESULT")
+          echo "::warning::comments: discussion category \"${CATEGORY}\" not found on ${REPO} (available: ${AVAILABLE:-none})"
+          exit 0
+        fi
+        echo "SEPO_COMMENTS_REPO_ID=${REPO_ID}" >> "$GITHUB_ENV"
+        echo "SEPO_COMMENTS_CATEGORY_ID=${CATEGORY_ID}" >> "$GITHUB_ENV"
+        echo "Resolved ${REPO} -> ${REPO_ID}, \"${CATEGORY}\" -> ${CATEGORY_ID}" \
+             "(pin SEPO_COMMENTS_REPO_ID/SEPO_COMMENTS_CATEGORY_ID as repo variables to skip this lookup)"

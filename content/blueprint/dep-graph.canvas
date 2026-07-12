@@ -1,0 +1,211 @@
+{
+  "nodes": [
+    {
+      "id": "def-sumodds",
+      "type": "file",
+      "file": "blueprint/ch01_sumsofoddnumbers.md",
+      "subpath": "#defsumodds",
+      "x": 128,
+      "y": 0,
+      "width": 150,
+      "height": 64,
+      "color": "#B0ECA3",
+      "bpTitle": "Definition 1.1 · sumOdds",
+      "bpKind": "Definition 1.1",
+      "bpName": "sumOdds",
+      "bpStatus": "statement ✓"
+    },
+    {
+      "id": "lemma-sumodds-succ",
+      "type": "file",
+      "file": "blueprint/ch01_sumsofoddnumbers.md",
+      "subpath": "#lemmasumodds-succ",
+      "x": 128,
+      "y": 107,
+      "width": 150,
+      "height": 64,
+      "color": "#1CAC78",
+      "bpTitle": "Lemma 1.2 · sumOdds-succ",
+      "bpKind": "Lemma 1.2",
+      "bpName": "sumOdds-succ",
+      "bpStatus": "fully formalized"
+    },
+    {
+      "id": "thm-sumodds-eq-sq",
+      "type": "file",
+      "file": "blueprint/ch01_sumsofoddnumbers.md",
+      "subpath": "#thmsumodds-eq-sq",
+      "x": 17,
+      "y": 214,
+      "width": 176,
+      "height": 64,
+      "color": "#1CAC78",
+      "bpTitle": "Theorem 1.3 · Sum of odd numbers",
+      "bpKind": "Theorem 1.3",
+      "bpName": "Sum of odd numbers",
+      "bpStatus": "fully formalized"
+    },
+    {
+      "id": "lemma-sumodds-pos",
+      "type": "file",
+      "file": "blueprint/ch01_sumsofoddnumbers.md",
+      "subpath": "#lemmasumodds-pos",
+      "x": 238,
+      "y": 214,
+      "width": 150,
+      "height": 64,
+      "color": "#FCD34D",
+      "bpTitle": "Lemma 1.4 · sumOdds-pos",
+      "bpKind": "Lemma 1.4",
+      "bpName": "sumOdds-pos",
+      "bpStatus": "in progress"
+    },
+    {
+      "id": "def-triangular",
+      "type": "file",
+      "file": "blueprint/02-further-sums.md",
+      "subpath": "#deftriangular",
+      "x": 376,
+      "y": 0,
+      "width": 150,
+      "height": 64,
+      "color": "#3b82f6",
+      "bpTitle": "Definition 2.1 · triangular",
+      "bpKind": "Definition 2.1",
+      "bpName": "triangular",
+      "bpStatus": "statement ready"
+    },
+    {
+      "id": "thm-gauss-sum",
+      "type": "file",
+      "file": "blueprint/02-further-sums.md",
+      "subpath": "#thmgauss-sum",
+      "x": 376,
+      "y": 107,
+      "width": 150,
+      "height": 64,
+      "bpTitle": "Theorem 2.2 · Gauss",
+      "bpKind": "Theorem 2.2",
+      "bpName": "Gauss",
+      "bpStatus": "not ready"
+    },
+    {
+      "id": "thm-sum-first-cubes",
+      "type": "file",
+      "file": "blueprint/02-further-sums.md",
+      "subpath": "#thmsum-first-cubes",
+      "x": 0,
+      "y": 321,
+      "width": 209,
+      "height": 64,
+      "color": "#A3D6FF",
+      "bpTitle": "Theorem 2.3 · Sum of the first cubes",
+      "bpKind": "Theorem 2.3",
+      "bpName": "Sum of the first cubes",
+      "bpStatus": "proof ready"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "fromNode": "def-sumodds",
+      "fromSide": "bottom",
+      "toNode": "lemma-sumodds-succ",
+      "toSide": "top",
+      "dashed": true
+    },
+    {
+      "id": "e1",
+      "fromNode": "def-sumodds",
+      "fromSide": "bottom",
+      "toNode": "thm-sumodds-eq-sq",
+      "toSide": "top",
+      "dashed": true
+    },
+    {
+      "id": "e2",
+      "fromNode": "lemma-sumodds-succ",
+      "fromSide": "bottom",
+      "toNode": "thm-sumodds-eq-sq",
+      "toSide": "top",
+      "color": "6"
+    },
+    {
+      "id": "e3",
+      "fromNode": "def-sumodds",
+      "fromSide": "bottom",
+      "toNode": "lemma-sumodds-pos",
+      "toSide": "top",
+      "dashed": true
+    },
+    {
+      "id": "e4",
+      "fromNode": "lemma-sumodds-succ",
+      "fromSide": "bottom",
+      "toNode": "lemma-sumodds-pos",
+      "toSide": "top",
+      "color": "6"
+    },
+    {
+      "id": "e5",
+      "fromNode": "def-triangular",
+      "fromSide": "bottom",
+      "toNode": "thm-gauss-sum",
+      "toSide": "top",
+      "dashed": true
+    },
+    {
+      "id": "e6",
+      "fromNode": "thm-sumodds-eq-sq",
+      "fromSide": "bottom",
+      "toNode": "thm-sum-first-cubes",
+      "toSide": "top",
+      "dashed": true
+    }
+  ],
+  "legend": {
+    "title": "Formalization status (kernel-computed)",
+    "nodes": [
+      {
+        "color": "#1CAC78",
+        "label": "fully formalized (proof + all ancestors)"
+      },
+      {
+        "color": "#9CEC8B",
+        "label": "proof formalized"
+      },
+      {
+        "color": "#FCD34D",
+        "label": "in progress (proof contains sorry)"
+      },
+      {
+        "color": "#B0ECA3",
+        "label": "statement formalized"
+      },
+      {
+        "color": "#A3D6FF",
+        "label": "ready to formalize (proof)"
+      },
+      {
+        "color": "#3b82f6",
+        "label": "ready to formalize (statement)"
+      },
+      {
+        "color": null,
+        "label": "not ready"
+      }
+    ],
+    "edges": [
+      {
+        "dashed": true,
+        "label": "uses (statement)"
+      },
+      {
+        "dashed": false,
+        "color": "6",
+        "label": "uses (proof)"
+      }
+    ],
+    "note": "Statuses are computed from the Lean kernel (lake exe blueprint-data). Hover a card to highlight its direct dependencies; click a title to open it in its chapter."
+  }
+}

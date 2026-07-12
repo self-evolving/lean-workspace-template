@@ -1,0 +1,334 @@
+# yaml-language-server: $schema=./quartz/plugins/quartz-plugins.schema.json
+configuration:
+  pageTitle: Lean Workspace
+  pageTitleSuffix: " | Lean Workspace"
+  enableSPA: true
+  enablePopovers: true
+  analytics:
+    provider: plausible
+  locale: en-US
+  baseUrl: lean-workspace-template.vercel.app
+  ignorePatterns:
+    - private
+    - templates
+    - .obsidian
+    - "**/_meta.json"
+  defaultDateType: modified
+  theme:
+    fontOrigin: googleFonts
+    cdnCaching: true
+    typography:
+      header: DM Sans
+      body: DM Sans
+      code: JetBrains Mono
+    colors:
+      lightMode:
+        light: "#fbfcff"
+        lightgray: "#eceef8"
+        gray: "#bac2d8"
+        darkgray: "#52576d"
+        dark: "#202337"
+        secondary: "#6d5efc"
+        tertiary: "#3b82f6"
+        highlight: rgba(109, 94, 252, 0.12)
+        textHighlight: "#c7d2fe88"
+      darkMode:
+        light: "#11131f"
+        lightgray: "#22263a"
+        gray: "#6f7898"
+        darkgray: "#d7dcef"
+        dark: "#f7f8ff"
+        secondary: "#8b7cff"
+        tertiary: "#60a5fa"
+        highlight: rgba(139, 124, 255, 0.18)
+        textHighlight: "#6366f188"
+plugins:
+  - source: github:quartz-community/note-properties
+    enabled: true
+    options:
+      includeAll: false
+      includedProperties:
+        - description
+        - type
+        - citekey
+        - authors
+        - year
+        - venue
+        - doi
+        - url
+        - status
+        - tags
+        - aliases
+      excludedProperties: []
+      hidePropertiesView: true
+      delimiters: "---"
+      language: yaml
+    order: 5
+    layout:
+      position: beforeBody
+      priority: 15
+  - source: github:quartz-community/created-modified-date
+    enabled: true
+    options:
+      priority:
+        - frontmatter
+        - filesystem
+    order: 10
+  - source: github:quartz-community/syntax-highlighting
+    enabled: true
+    options:
+      theme:
+        light: github-light
+        dark: github-dark
+      keepBackground: false
+    order: 20
+  - source: github:quartz-community/obsidian-flavored-markdown
+    enabled: true
+    options:
+      enableInHtmlEmbed: false
+      enableCheckbox: true
+    order: 30
+  - source: github:quartz-community/github-flavored-markdown
+    enabled: true
+    order: 40
+  - source: github:quartz-community/table-of-contents
+    enabled: true
+    order: 50
+  - source: github:quartz-community/crawl-links
+    enabled: true
+    options:
+      markdownLinkResolution: relative
+    order: 60
+  - source: github:quartz-community/description
+    enabled: true
+    order: 70
+  # Blueprint-as-source transformer: item headings (attrs -> anchors + status pills +
+  # dep lines), cross-ref resolution, lean code inlining. Runs before latex/GFM.
+  - source: ./quartz/plugins/local/blueprint
+    enabled: true
+    order: 32
+  # Order 35 (before github-flavored-markdown at 40): remark-math must turn $...$ into
+  # math nodes before SmartyPants runs, or apostrophes inside math become unicode quotes
+  # that KaTeX can't typeset (e.g. blueprint statements with primes like $E_2'$).
+  - source: github:quartz-community/latex
+    enabled: true
+    options:
+      renderEngine: katex
+    order: 35
+  # Citations machinery disabled: this repo renders Lean blueprints, not literature
+  # notes with a BibTeX bibliography.
+  - source: github:quartz-community/citations
+    enabled: false
+    options:
+      bibliographyFile: ./bibliography.bib
+      suppressBibliography: false
+      linkCitations: true
+    order: 85
+  - source: ./quartz/plugins/local/literature-citations
+    enabled: false
+    options:
+      bibliographyFile: ./bibliography.bib
+      papersRoot: papers
+    order: 86
+  - source: github:quartz-community/hard-line-breaks
+    enabled: false
+    order: 90
+  - source: github:quartz-community/ox-hugo
+    enabled: false
+    order: 91
+  - source: github:quartz-community/roam
+    enabled: false
+    order: 92
+  - source: github:quartz-community/remove-draft
+    enabled: true
+  - source: github:quartz-community/explicit-publish
+    enabled: false
+  - source: github:quartz-community/alias-redirects
+    enabled: true
+  - source: github:quartz-community/content-index
+    enabled: true
+    options:
+      enableSiteMap: true
+      enableRSS: true
+  - source: github:quartz-community/favicon
+    enabled: true
+  - source: github:quartz-community/og-image
+    enabled: true
+  - source: github:quartz-community/cname
+    enabled: true
+  # Local fork of github:quartz-community/canvas-page (see its PATCHES.md):
+  # blueprint title cards, dashed/solid edge styles, spread edge anchors, edges under nodes.
+  - source: ./quartz/plugins/local/canvas-page
+    enabled: true
+  - source: github:quartz-community/bases-page
+    enabled: false
+    order: 50
+  - source: github:quartz-community/content-page
+    enabled: true
+  - source: ./quartz/plugins/local/folder-page
+    enabled: true
+    options:
+      orderFromMeta: true
+  - source: github:quartz-community/tag-page
+    enabled: true
+  - source: github:quartz-community/explorer
+    enabled: false
+    layout:
+      position: left
+      priority: 50
+  - source: github:quartz-community/graph
+    enabled: true
+    options:
+      localGraph:
+        showTags: false
+      globalGraph:
+        showTags: false
+    layout:
+      position: right
+      priority: 10
+      condition: library-page
+  - source: github:quartz-community/search
+    enabled: true
+    layout:
+      - position: left
+        priority: 20
+        group: toolbar
+        groupOptions:
+          grow: true
+        display: desktop-only
+        condition: site-page
+      - position: left
+        priority: 40
+        display: mobile-only
+        condition: site-page
+  - source: github:quartz-community/backlinks
+    enabled: true
+    layout:
+      position: right
+      priority: 30
+      condition: library-page
+  - source: github:quartz-community/article-title
+    enabled: false
+    layout:
+      position: beforeBody
+      priority: 10
+      condition: not-index
+  - source: github:quartz-community/content-meta
+    enabled: false
+    options:
+      showReadingTime: false
+    layout:
+      position: beforeBody
+      priority: 20
+      condition: not-index
+  - source: github:quartz-community/tag-list
+    enabled: false
+    layout:
+      position: beforeBody
+      priority: 30
+      condition: not-index
+  - source: github:quartz-community/page-title
+    enabled: true
+    layout:
+      position: left
+      priority: 10
+      condition: site-page
+  - source: github:quartz-community/spacer
+    enabled: true
+    order: 25
+    layout:
+      position: left
+      priority: 25
+      display: mobile-only
+      condition: site-page
+  - source: github:quartz-community/darkmode
+    enabled: true
+    layout:
+      - position: left
+        priority: 30
+        display: mobile-only
+        condition: site-page
+      - position: left
+        priority: 30
+        group: toolbar
+        display: desktop-only
+        condition: site-page
+  - source: github:quartz-community/reader-mode
+    enabled: true
+    layout:
+      position: left
+      priority: 35
+      group: toolbar
+      display: desktop-only
+      condition: site-page
+  - source: github:quartz-community/breadcrumbs
+    enabled: false
+    layout:
+      position: beforeBody
+      priority: 5
+      condition: not-index
+  - source: ./quartz/plugins/local/doc-page-header
+    enabled: true
+    layout:
+      position: beforeBody
+      priority: 1
+      condition: library-page
+  - source: ./quartz/plugins/local/docs-explorer
+    enabled: true
+    layout:
+      position: left
+      priority: 50
+      condition: site-page
+  - source: ./quartz/plugins/local/sepo-comments
+    enabled: true
+    layout:
+      position: afterBody
+      priority: 10
+  - source: ./quartz/plugins/local/hypothesis
+    enabled: true
+    layout:
+      position: afterBody
+      priority: 20
+  - source: github:quartz-community/comments
+    enabled: false
+    options:
+      provider: giscus
+      options: {}
+    layout:
+      position: afterBody
+      priority: 10
+  - source: github:quartz-community/footer
+    enabled: true
+    options:
+      links: {}
+  - source: github:quartz-community/recent-notes
+    enabled: false
+  - source: github:quartz-community/encrypted-pages
+    enabled: false
+    order: 900
+  - source: github:quartz-community/stacked-pages
+    enabled: false
+layout:
+  groups:
+    toolbar:
+      priority: 35
+      direction: row
+      gap: 0.5rem
+  byPageType:
+    "404":
+      positions:
+        beforeBody: []
+        left: []
+        right: []
+        afterBody: []
+    content: {}
+    folder:
+      exclude:
+        - reader-mode
+      positions:
+        right: []
+    tag:
+      exclude:
+        - reader-mode
+      positions:
+        right: []

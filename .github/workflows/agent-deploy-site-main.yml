@@ -1,0 +1,98 @@
+name: Agent / Deploy Site Main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  deployments: write
+  # Lets the resolve-discussion-ids step look up the comment widget's
+  # repo/category IDs from names.
+  discussions: read
+
+concurrency:
+  group: canonical-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: vars.AGENT_ENABLED != 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout site
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Repo variables are not exported to step env automatically. Forward the
+      # site-config namespaces plus the repo-local content-root override.
+      # Heredoc form keeps multi-line values intact; the
+      # delimiter is random per run so no value can close the block early.
+      - name: Export site configuration variables
+        env:
+          REPO_VARS: ${{ toJSON(vars) }}
+        run: |
+          DELIM="SEPO_EOV_$(openssl rand -hex 16)"
+          echo "$REPO_VARS" | jq -r --arg delim "$DELIM" 'to_entries[]
+            | select(.key | test("(^QUARTZ_CONTENT_ROOT$)|^(SEPO_COMMENTS_|SEPO_PREVIEW_|HYPOTHESIS_)"))
+            | "\(.key)<<\($delim)\n\(.value)\n\($delim)"' >> "$GITHUB_ENV"
+
+      - name: Set comments build defaults
+        env:
+          DEFAULT_SEPO_COMMENTS_REPO: ${{ github.repository }}
+          DEFAULT_SEPO_COMMENTS_CATEGORY: General
+        run: |
+          {
+            if [[ -z "${SEPO_COMMENTS_REPO:-}" ]]; then
+              echo "SEPO_COMMENTS_REPO=${DEFAULT_SEPO_COMMENTS_REPO}"
+            fi
+            if [[ -z "${SEPO_COMMENTS_CATEGORY:-}" ]]; then
+              echo "SEPO_COMMENTS_CATEGORY=${DEFAULT_SEPO_COMMENTS_CATEGORY}"
+            fi
+          } >> "$GITHUB_ENV"
+
+      # The build itself does no network lookups: this step fills in the
+      # comment widget's GraphQL IDs by name when they are not pinned.
+      - name: Resolve discussion IDs
+        uses: ./.github/actions/resolve-discussion-ids
+
+      - name: Build site
+        run: npm run build
+
+      - name: Upload artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: sepo-canonical-site
+          path: ./public
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Deploy canonical site
+        id: deploy
+        uses: ./.github/actions/deploy-sepo-site
+        with:
+          artifact_id: ${{ steps.upload.outputs.artifact-id }}
+          canonical: "true"
+
+      - name: Setup agent runtime
+        if: steps.deploy.outputs.url != ''
+        uses: ./.github/actions/setup-agent-runtime
+
+      - name: Publish GitHub deployment URL
+        if: steps.deploy.outputs.url != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          URL: ${{ steps.deploy.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          ENVIRONMENT: Production
+        run: node .agent/dist/cli/publish-canonical-deployment.js

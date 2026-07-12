@@ -1,0 +1,73 @@
+name: Test Scripts
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Validate Quartz site
+        run: |
+          set -euo pipefail
+          npm run check
+          npm run build
+          QUARTZ_CONTENT_ROOT=docs npm run build
+
+      - name: Run blueprint model tests
+        run: npm run test:blueprint
+
+      - name: Run Quartz tests
+        run: |
+          npm test -- \
+            quartz/components/DocsExplorer.nav.test.mjs \
+            quartz/plugins/loader/config-loader.test.mjs
+
+      - name: Install agent dependencies
+        run: |
+          set -euo pipefail
+          cd .agent
+          npm ci
+
+      - name: Build agent
+        run: |
+          set -euo pipefail
+          cd .agent
+          npm run build
+
+      - name: Runtime tests
+        run: |
+          set -euo pipefail
+          cd .agent
+          npm run test:runtime
+
+      - name: Workflow and action checks
+        run: |
+          set -euo pipefail
+          cd .agent
+          npm run check:workflow
+
+      - name: Docs hygiene checks
+        run: |
+          set -euo pipefail
+          cd .agent
+          npm run check:docs
+
+      - name: Shell checks
+        run: |
+          set -euo pipefail
+          cd .agent
+          npm run check:shell
+
+      - name: Diff hygiene
+        run: git diff --check

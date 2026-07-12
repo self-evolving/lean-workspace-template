@@ -1,0 +1,122 @@
+@use "../../styles/variables.scss" as *;
+
+@keyframes dropin {
+  0% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  1% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+.popover {
+  z-index: 999;
+  position: fixed;
+  overflow: visible;
+  padding: 1rem;
+  left: 0;
+  top: 0;
+  will-change: transform;
+
+  & > .popover-inner {
+    position: relative;
+    width: 30rem;
+    max-height: 20rem;
+    padding: 0;
+    font-weight: initial;
+    font-style: initial;
+    line-height: normal;
+    font-size: initial;
+    font-family: var(--bodyFont);
+    border: 1px solid var(--lightgray);
+    background-color: color-mix(in srgb, var(--light) 92%, white 8%);
+    border-radius: 12px;
+    box-shadow: 6px 6px 36px 0 rgba(0, 0, 0, 0.25);
+    overflow: auto;
+    overscroll-behavior: contain;
+    white-space: normal;
+    user-select: none;
+    cursor: default;
+  }
+
+  & > .popover-inner[data-content-type] {
+    &[data-content-type*="pdf"],
+    &[data-content-type*="image"] {
+      padding: 0;
+      max-height: 100%;
+    }
+
+    &[data-content-type*="image"] {
+      img {
+        margin: 0;
+        border-radius: 0;
+        display: block;
+      }
+    }
+
+    &[data-content-type*="pdf"] {
+      iframe {
+        width: 100%;
+      }
+    }
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  & > .popover-inner > .popover-hint:first-child:not(article) {
+    padding: 0.85rem 1rem 0.8rem;
+    background: var(--light);
+    border-bottom: 1px solid var(--lightgray);
+  }
+
+  & > .popover-inner > .popover-hint:first-child:not(article) .content-meta {
+    margin: 0 0 0.3rem 0;
+    font-size: 0.75rem;
+    color: var(--gray);
+  }
+
+  & > .popover-inner > .popover-hint:first-child:not(article) .article-title {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--secondary);
+    line-height: 1.2;
+  }
+
+  & > .popover-inner > article.popover-hint,
+  & > .popover-inner > .popover-hint:not(:first-child):not(article) {
+    padding: 0.95rem 1rem 1rem;
+  }
+
+  & > .popover-inner > article.popover-hint > *:first-child,
+  & > .popover-inner > .popover-hint:not(:first-child):not(article) > *:first-child {
+    margin-top: 0;
+  }
+
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+
+  @media all and ($mobile) {
+    display: none !important;
+  }
+}
+
+.active-popover,
+.popover:hover {
+  animation: dropin 0.3s ease;
+  animation-fill-mode: forwards;
+  animation-delay: 0.2s;
+}
+
+.popover.canvas-popover {
+  pointer-events: none;
+}

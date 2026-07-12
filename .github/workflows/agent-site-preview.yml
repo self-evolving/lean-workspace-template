@@ -1,0 +1,163 @@
+name: Agent / Site Preview
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, closed]
+# discussions: read lets the resolve-discussion-ids step look up the comment
+# widget's repo/category IDs from names using the workflow token.
+permissions:
+  id-token: write
+  contents: read
+  deployments: write
+  discussions: read
+  pull-requests: read
+jobs:
+  deploy:
+    concurrency:
+      group: sepo-preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    # AGENT_PREVIEW_POLICY: unset/auto/all = enabled for public and private repos; `off` = disabled.
+    # Within that, auto-preview every agent PR (agent/ branch prefix). Label overrides:
+    # `sepo-preview` opts any PR in, `no-preview` opts an agent PR out.
+    if: >-
+      vars.AGENT_ENABLED != 'false' &&
+      vars.AGENT_PREVIEW_POLICY != 'off' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.action != 'closed' &&
+      (github.event.action != 'labeled' || github.event.label.name == 'sepo-preview') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-preview') &&
+      (startsWith(github.event.pull_request.head.ref, 'agent/') || contains(github.event.pull_request.labels.*.name, 'sepo-preview'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup agent runtime
+        uses: ./.github/actions/setup-agent-runtime
+      # Repo variables are not exported to step env automatically. Forward the
+      # site-config namespaces plus the repo-local content-root override.
+      # Heredoc form keeps multi-line values intact; the
+      # delimiter is random per run so no value can close the block early.
+      - name: Export site configuration variables
+        env:
+          REPO_VARS: ${{ toJSON(vars) }}
+        run: |
+          DELIM="SEPO_EOV_$(openssl rand -hex 16)"
+          echo "$REPO_VARS" | jq -r --arg delim "$DELIM" 'to_entries[]
+            | select(.key | test("(^QUARTZ_CONTENT_ROOT$)|^(SEPO_COMMENTS_|SEPO_PREVIEW_|HYPOTHESIS_)"))
+            | "\(.key)<<\($delim)\n\(.value)\n\($delim)"' >> "$GITHUB_ENV"
+      - name: Set comments build defaults
+        env:
+          DEFAULT_SEPO_COMMENTS_REPO: ${{ github.repository }}
+          DEFAULT_SEPO_COMMENTS_CATEGORY: General
+          SEPO_PREVIEW_PR_VALUE: ${{ github.event.pull_request.number }}
+          SEPO_PREVIEW_BRANCH_VALUE: ${{ github.event.pull_request.head.ref }}
+        run: |
+          {
+            if [[ -z "${SEPO_COMMENTS_REPO:-}" ]]; then
+              echo "SEPO_COMMENTS_REPO=${DEFAULT_SEPO_COMMENTS_REPO}"
+            fi
+            if [[ -z "${SEPO_COMMENTS_CATEGORY:-}" ]]; then
+              echo "SEPO_COMMENTS_CATEGORY=${DEFAULT_SEPO_COMMENTS_CATEGORY}"
+            fi
+            echo "SEPO_PREVIEW_PR=${SEPO_PREVIEW_PR_VALUE}"
+            echo "SEPO_PREVIEW_BRANCH=${SEPO_PREVIEW_BRANCH_VALUE}"
+          } >> "$GITHUB_ENV"
+      # The build itself does no network lookups: this step fills in optional
+      # Discussion GraphQL IDs by name when they are not pinned.
+      - name: Resolve discussion IDs
+        uses: ./.github/actions/resolve-discussion-ids
+      - name: Export changed content pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          content_root="${QUARTZ_CONTENT_ROOT:-content}"
+          changed_json="$(
+            gh api --paginate "repos/${REPO}/pulls/${PR}/files" \
+              --jq '.[] | select(.status != "removed") | .filename' |
+              CONTENT_ROOT="$content_root" \
+              jq -R -s -c '
+                env.CONTENT_ROOT as $root |
+                split("\n")[:-1]
+                | map(select(startswith($root + "/") and test("\\.(md|lean)$")) | ltrimstr($root + "/"))
+                | unique
+              '
+          )"
+          echo "SEPO_PREVIEW_CHANGED_FILES_JSON=${changed_json}" >> "$GITHUB_ENV"
+      - name: Build site
+        run: |
+          npm ci
+          npm run build
+      - name: Upload artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          { name: sepo-preview-site, path: ./public, retention-days: 1, if-no-files-found: error }
+      - name: Deploy preview
+        id: deploy
+        uses: ./.github/actions/deploy-sepo-site
+        with:
+          artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      - name: Resolve Sepo agent auth
+        id: auth
+        if: steps.deploy.outputs.url != ''
+        uses: ./.github/actions/resolve-github-auth
+        with:
+          app_id: ${{ secrets.AGENT_APP_ID }}
+          app_private_key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          pat: ${{ secrets.AGENT_PAT }}
+          fallback_token: ${{ github.token }}
+      - name: Publish deployment status
+        if: steps.deploy.outputs.url != ''
+        env:
+          SEPO_TOKEN: ${{ steps.auth.outputs.auth_mode != 'github_token' && steps.auth.outputs.token || '' }}
+          FALLBACK_TOKEN: ${{ github.token }}
+          URL: ${{ steps.deploy.outputs.url }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ENVIRONMENT: Preview
+        run: node .agent/dist/cli/publish-preview-deployment.js
+  teardown:
+    concurrency:
+      group: sepo-preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    if: >-
+      vars.AGENT_ENABLED != 'false' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (startsWith(github.event.pull_request.head.ref, 'agent/') || contains(github.event.pull_request.labels.*.name, 'sepo-preview'))
+    runs-on: ubuntu-latest
+    permissions: { id-token: write, contents: read, deployments: write }
+    steps:
+      - name: Teardown preview
+        env:
+          SERVER_URL: https://preview-api.sepo.sh
+        run: |
+          set -euo pipefail
+          TOK=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sepo-preview" | jq -r '.value')
+          [[ "$TOK" != "null" && -n "$TOK" ]] || { echo "::error::OIDC token fetch failed"; exit 1; }
+          RESP=$(curl -sS -X POST "$SERVER_URL/api/deploy/teardown" -H 'Content-Type: application/json' \
+                 --data "$(jq -nc --arg t "$TOK" '{oidc_token:$t}')" -w '\n%{http_code}')
+          CODE=$(tail -n1 <<<"$RESP"); echo "$RESP"
+          [[ "$CODE" == 200 || "$CODE" == 404 ]] || { echo "::error::teardown failed ($CODE)"; exit 1; }
+      # The deployment-event cleanup must run even when the preview server
+      # rejects the teardown (e.g. transient 5xx), or closed PRs keep active
+      # Preview deployments. `!cancelled()` (not `always()`) so a run superseded
+      # via the concurrency group cannot race a fresh deploy's events.
+      - uses: actions/checkout@v4
+        if: ${{ !cancelled() }}
+      - name: Setup agent runtime
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/setup-agent-runtime
+      - name: Mark preview deployments inactive
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ENVIRONMENT: Preview
+        run: node .agent/dist/cli/inactivate-preview-deployments.js

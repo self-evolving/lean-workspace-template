@@ -1,0 +1,98 @@
+name: Lean blueprint sync
+
+# Blueprint-as-source: typecheck the blueprint chapters (they ARE Lake source),
+# extract kernel truth, regenerate the dependency canvas, validate the site, and
+# commit back the two machine-managed files — so a PR that proves a lemma shows
+# its node turning green in its own diff.
+
+# Trigger paths watch the template content root and this repository's docs. The
+# blueprint root is configurable in blueprint.config.json; non-blueprint content
+# edits just produce a no-op sync (extract + canvas unchanged), while the site
+# builds validate the edited content.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "content/**"
+      - "docs/**"
+      - "**.lean"
+      - "lakefile.toml"
+      - "lake-manifest.json"
+      - "lean-toolchain"
+      - "scripts/**"
+      - "blueprint.config.json"
+      - ".github/workflows/lean.yml"
+      - ".github/workflows/bump-mathlib.yml"
+  pull_request:
+    paths:
+      - "content/**"
+      - "docs/**"
+      - "**.lean"
+      - "lakefile.toml"
+      - "lake-manifest.json"
+      - "lean-toolchain"
+      - "scripts/**"
+      - "blueprint.config.json"
+      - ".github/workflows/lean.yml"
+      - ".github/workflows/bump-mathlib.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lean-blueprint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (PR head branch for commit-back)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+
+      - name: Build Lean (blueprint chapters + extractor)
+        uses: leanprover/lean-action@v1
+        with:
+          use-github-cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install site dependencies
+        run: npm ci
+
+      - name: Extract kernel data + regenerate canvas
+        # the same config-aware command the local loop uses (reads
+        # blueprint.config.json for contentRoot + root + lakeRoots; fails on empty roots)
+        run: |
+          node <<'NODE' >> "$GITHUB_ENV"
+          const cfg = require("./blueprint.config.json")
+          const bp = (cfg.blueprints && cfg.blueprints[0]) || {}
+          console.log(`BP_CONTENT_ROOT=${bp.contentRoot || cfg.contentRoot || "content"}`)
+          console.log(`BP_ROOT=${bp.root || "blueprint"}`)
+          NODE
+          npm run blueprint:sync
+
+      - name: Build starter site and repository docs
+        run: |
+          npm run build
+          QUARTZ_CONTENT_ROOT=docs npm run build
+
+      - name: Commit regenerated blueprint data
+        # fork PRs can't be pushed to — they still get the validation above
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          GENERATED="$BP_CONTENT_ROOT/$BP_ROOT/blueprint-data.json $BP_CONTENT_ROOT/$BP_ROOT/dep-graph.canvas"
+          if git diff --quiet -- $GENERATED; then
+            echo "blueprint data unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $GENERATED
+          git commit -m "chore: regenerate blueprint data [skip ci]"
+          git push

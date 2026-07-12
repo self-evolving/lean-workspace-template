@@ -1,0 +1,4 @@
+{
+  "label": "Documentation",
+  "pages": ["modes", "local-setup", "grammar", "reference", "configuring-sepo", "agents"]
+}

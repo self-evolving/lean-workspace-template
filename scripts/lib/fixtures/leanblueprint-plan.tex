@@ -1,0 +1,83 @@
+% Test fixture: the demo plan in classic leanblueprint LaTeX conventions
+% (\label, \uses, \lean, \leanok), exercising parsePlanTex — see
+% blueprint-model.test.mjs. Kept plasTeX-compatible; the same dialect is what
+% users feed the importer when migrating a leanblueprint project:
+%   node scripts/import-blueprint.mjs --plan=path/to/content.tex --data=...
+% Statuses are computed from the Lean kernel either way; \leanok is ignored.
+%
+% Conventions the parser understands:
+%   \chapter{...}                          chapter boundaries
+%   \begin{definition|lemma|proposition|theorem|corollary}[Optional name]
+%     \label{kind:slug}  \lean{Full.Decl.Name, ...}  \leanok
+%     \uses{label, label}                  statement-level dependencies
+%     ... statement TeX ($...$ / $$...$$ math) ...
+%   \end{...}
+%   \begin{proof} \uses{...} ... \end{proof}   proof-level dependencies
+%
+\chapter{Sums of odd numbers}
+
+\begin{definition}\label{def:sumOdds}
+  \lean{Demo.sumOdds}\leanok
+  The sum of the first $n$ odd numbers:
+  $$S(n) = \sum_{k=1}^{n} (2k - 1),$$
+  defined by recursion: $S(0) = 0$ and $S(n+1) = S(n) + (2n + 1)$.
+\end{definition}
+
+\begin{lemma}\label{lemma:sumOdds-succ}
+  \lean{Demo.sumOdds_succ}\leanok
+  \uses{def:sumOdds}
+  For every $n$, $S(n+1) = S(n) + (2n + 1)$.
+\end{lemma}
+\begin{proof}\leanok
+  Immediate from the recursive definition (it holds by $\mathrm{rfl}$).
+\end{proof}
+
+\begin{theorem}[Sum of odd numbers]\label{thm:sumOdds-eq-sq}
+  \lean{Demo.sumOdds_eq_sq}\leanok
+  \uses{def:sumOdds}
+  The sum of the first $n$ odd numbers is a perfect square:
+  $$S(n) = n^2.$$
+\end{theorem}
+\begin{proof}\leanok
+  \uses{lemma:sumOdds-succ}
+  Induction on $n$. The base case is trivial. For the step, using the
+  induction hypothesis and \Cref{lemma:sumOdds-succ}:
+  $$S(n+1) = S(n) + (2n+1) = n^2 + 2n + 1 = (n+1)^2.$$
+\end{proof}
+
+\begin{lemma}\label{lemma:sumOdds-pos}
+  \lean{Demo.sumOdds_pos}
+  \uses{def:sumOdds}
+  For every $n$, $S(n+1) > 0$.
+\end{lemma}
+\begin{proof}
+  \uses{lemma:sumOdds-succ}
+  $S(n+1) = S(n) + (2n+1) \ge 2n + 1 > 0$. (The Lean proof is an open
+  starter task: the declaration currently contains a \texttt{sorry}.)
+\end{proof}
+
+\chapter{Further sums}
+
+\begin{definition}\label{def:triangular}
+  The $n$-th triangular number: $T(n) = \sum_{k=1}^{n} k$.
+\end{definition}
+
+\begin{theorem}[Gauss]\label{thm:gauss-sum}
+  \uses{def:triangular}
+  $T(n) = \dfrac{n(n+1)}{2}$.
+\end{theorem}
+\begin{proof}
+  \uses{def:triangular}
+  Pair each $k$ with $n + 1 - k$; each of the $n$ pairs sums to $n + 1$.
+\end{proof}
+
+\begin{theorem}[Sum of the first cubes]\label{thm:sum-first-cubes}
+  \uses{thm:sumOdds-eq-sq}
+  $$\sum_{k=1}^{n} k^3 = \left(\frac{n(n+1)}{2}\right)^2.$$
+\end{theorem}
+\begin{proof}
+  \uses{thm:sumOdds-eq-sq}
+  Each cube $k^3$ is the sum of $k$ consecutive odd numbers, so the left-hand
+  side is the sum of the first $T(n)$ odd numbers, which is $T(n)^2$ by
+  \Cref{thm:sumOdds-eq-sq}.
+\end{proof}

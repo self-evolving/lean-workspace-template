@@ -1,0 +1,12 @@
+{
+  "contentRoot": "content",
+  "blueprints": [
+    {
+      "root": "blueprint",
+      "source": { "type": "dir" },
+      "pageMode": "chapter",
+      "lakeRoots": ["Ch01_SumsOfOddNumbers"],
+      "repo": "self-evolving/lean-workspace-template"
+    }
+  ]
+}

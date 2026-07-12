@@ -1,0 +1,14 @@
+public
+node_modules
+.quartz-cache
+content
+.agent
+.github/actions
+.github/prompts
+.github/ISSUE_TEMPLATE
+.github/workflows/agent-*.yml
+.github/workflows/test-scripts.yml
+.quartz
+quartz/plugins/local/canvas-page/dist
+lake-manifest.json
+.skills/lean4/LICENSE

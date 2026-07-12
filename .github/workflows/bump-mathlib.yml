@@ -1,0 +1,209 @@
+name: Bump Mathlib
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Mathlib ref to pin, for example v4.31.0-rc1. Defaults to the latest non-draft Mathlib release."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bump-mathlib
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check whether this project uses Mathlib
+        id: mathlib
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY' >> "$GITHUB_OUTPUT"
+          import pathlib
+          import re
+
+          lakefile = pathlib.Path("lakefile.toml")
+          if not lakefile.exists():
+              print("present=false")
+              raise SystemExit
+
+          lines = lakefile.read_text().splitlines(keepends=True)
+          name_re = re.compile(r'\s*name\s*=\s*["\']mathlib["\']\s*(?:#.*)?$')
+          present = False
+          block_start = None
+          for i, line in enumerate(lines + ["[[sentinel]]\n"]):
+              header = re.match(r'\s*\[\[([^\]]+)\]\]\s*(?:#.*)?$', line)
+              if header:
+                  if block_start is not None and any(name_re.match(item) for item in lines[block_start:i]):
+                      present = True
+                      break
+                  block_start = i if i < len(lines) and header.group(1).strip() == "require" else None
+
+          print(f"present={str(present).lower()}")
+          PY
+
+      - name: Skip when Mathlib is not configured
+        if: steps.mathlib.outputs.present != 'true'
+        run: echo "No real [[require]] named mathlib in lakefile.toml; skipping."
+
+      - name: Resolve Mathlib target
+        id: target
+        if: steps.mathlib.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TARGET: ${{ inputs.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ref="$REQUESTED_TARGET"
+          if [ -z "$ref" ]; then
+            ref="$(gh api repos/leanprover-community/mathlib4/releases --jq '[.[] | select(.draft | not)][0].tag_name // ""')"
+          fi
+
+          if [ -z "$ref" ]; then
+            echo "::error::Could not resolve a Mathlib release target."
+            exit 1
+          fi
+
+          toolchain="$(gh api "repos/leanprover-community/mathlib4/contents/lean-toolchain?ref=${ref}" --jq '.content | @base64d')"
+          toolchain="${toolchain//$'\r'/}"
+          toolchain="${toolchain//$'\n'/}"
+
+          if [ -z "$toolchain" ]; then
+            echo "::error::Could not read lean-toolchain from leanprover-community/mathlib4 at ${ref}."
+            exit 1
+          fi
+
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
+
+      - name: Pin Mathlib and matching Lean toolchain
+        if: steps.mathlib.outputs.present == 'true'
+        env:
+          MATHLIB_REF: ${{ steps.target.outputs.ref }}
+          LEAN_TOOLCHAIN: ${{ steps.target.outputs.toolchain }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$LEAN_TOOLCHAIN" > lean-toolchain
+          python3 <<'PY'
+          import os
+          import pathlib
+          import re
+
+          target = os.environ["MATHLIB_REF"]
+          path = pathlib.Path("lakefile.toml")
+          lines = path.read_text().splitlines(keepends=True)
+          name_re = re.compile(r'\s*name\s*=\s*["\']mathlib["\']\s*(?:#.*)?$')
+
+          block_start = None
+          for i, line in enumerate(lines + ["[[sentinel]]\n"]):
+              header = re.match(r'\s*\[\[([^\]]+)\]\]\s*(?:#.*)?$', line)
+              if header:
+                  if block_start is not None:
+                      block = lines[block_start:i]
+                      if any(name_re.match(item) for item in block):
+                          rev_index = next((j for j in range(block_start, i) if re.match(r'\s*rev\s*=', lines[j])), None)
+                          if rev_index is None:
+                              name_index = next(j for j in range(block_start, i) if name_re.match(lines[j]))
+                              lines.insert(name_index + 1, f'rev = "{target}"\n')
+                          else:
+                              lines[rev_index] = f'rev = "{target}"\n'
+                          path.write_text("".join(lines))
+                          raise SystemExit
+                  block_start = i if i < len(lines) and header.group(1).strip() == "require" else None
+
+          raise SystemExit("mathlib dependency disappeared from lakefile.toml")
+          PY
+
+      - name: Install Lean
+        if: steps.mathlib.outputs.present == 'true'
+        uses: leanprover/lean-action@v1
+        with:
+          # Setup-only: lake-manifest.json still points at the old rev here,
+          # so keep the action from probing the project or fetching the
+          # Mathlib cache against a stale manifest.
+          auto-config: false
+          build: false
+          use-github-cache: true
+          use-mathlib-cache: false
+
+      - name: Update manifest and build
+        if: steps.mathlib.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake update mathlib
+          lake exe cache get
+          lake build
+
+      - uses: actions/setup-node@v5
+        if: steps.mathlib.outputs.present == 'true'
+        with:
+          node-version: 22
+
+      - name: Refresh blueprint data
+        if: steps.mathlib.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run blueprint:sync
+
+      - name: Check for bump changes
+        id: diff
+        if: steps.mathlib.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- lakefile.toml lake-manifest.json lean-toolchain; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update bump PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/bump-mathlib
+          delete-branch: true
+          add-paths: |
+            lakefile.toml
+            lake-manifest.json
+            lean-toolchain
+            content/blueprint/blueprint-data.json
+            content/blueprint/dep-graph.canvas
+          commit-message: "chore: bump mathlib to ${{ steps.target.outputs.ref }}"
+          title: "Bump Mathlib to ${{ steps.target.outputs.ref }}"
+          body: |
+            Automated Mathlib bump to `${{ steps.target.outputs.ref }}`
+            ([workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})).
+
+            Updated:
+            - `lean-toolchain`
+            - `lakefile.toml`
+            - `lake-manifest.json`
+            - machine-managed blueprint data, when the bump changed statuses
+
+            Validation run before opening this PR:
+            - `lake update mathlib`
+            - `lake exe cache get && lake build`
+            - `npm run blueprint:sync`
+
+            Note: this PR was opened with the default `GITHUB_TOKEN`, so CI
+            workflows do not start on it automatically — push a commit to the
+            branch or configure a GitHub App/PAT token (see the Mathlib bumps
+            section of the reference) to trigger them.

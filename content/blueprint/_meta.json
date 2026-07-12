@@ -1,0 +1,8 @@
+{
+  "label": "Demo proof",
+  "pages": [
+    { "page": "dep-graph", "type": "canvas", "title": "Dependency canvas" },
+    "Ch01_SumsOfOddNumbers",
+    "02-further-sums"
+  ]
+}

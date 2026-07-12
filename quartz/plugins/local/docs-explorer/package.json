@@ -1,0 +1,21 @@
+{
+  "name": "docs-explorer",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "build": "mkdir -p dist && cp index.js dist/index.js && printf 'export {}\\n' > dist/index.d.ts"
+  },
+  "quartz": {
+    "name": "docs-explorer",
+    "displayName": "docs-explorer",
+    "category": "component",
+    "version": "1.0.0",
+    "quartzVersion": ">=5.0.0",
+    "dependencies": [],
+    "defaultEnabled": true,
+    "defaultOptions": {}
+  }
+}

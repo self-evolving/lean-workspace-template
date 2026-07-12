@@ -1,0 +1,4 @@
+{
+  "label": "Lean Workspace features",
+  "pages": ["sepo-agent-drawer", "per-branch-preview", "blueprint-browser"]
+}

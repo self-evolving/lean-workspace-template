@@ -1,0 +1,7 @@
+* text=auto eol=lf
+
+# Blueprint-as-source: the chapter files in content/blueprint/ are hand-authored
+# sources. Only the two machine-managed artifacts are marked generated (committed
+# so the site deploys without a Lean toolchain; collapsed in GitHub diff views).
+content/blueprint/blueprint-data.json linguist-generated=true
+content/blueprint/dep-graph.canvas linguist-generated=true

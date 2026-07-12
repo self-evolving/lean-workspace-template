@@ -1,0 +1,25 @@
+name = "workspace"
+defaultTargets = ["Blueprint"]
+
+# The blueprint chapters ARE Lake source: content/blueprint/*.lean are literate
+# chapters (prose in /-! -/ doc blocks, real declarations between them), rendered
+# by Quartz and typechecked by Lake from the same files. Lean chapter filenames
+# must be valid module identifiers (e.g. Ch01_SumsOfOddNumbers); list each new
+# lean chapter in `roots` below (and in content/blueprint/_meta.json for nav).
+#
+# The demo has no dependencies so the build takes seconds. Real projects: add
+#   [[require]]
+#   name = "mathlib"
+#   scope = "leanprover-community"
+# and bump lean-toolchain to match.
+
+[[lean_lib]]
+name = "Blueprint"
+srcDir = "content/blueprint"
+roots = ["Ch01_SumsOfOddNumbers"]
+
+[[lean_exe]]
+name = "blueprint-data"
+srcDir = "scripts/blueprint-data"
+root = "BlueprintData"
+supportInterpreter = true

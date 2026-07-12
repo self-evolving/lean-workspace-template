@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Quick start and docs
+    url: https://github.com/self-evolving/lean-workspace-template/tree/main/docs
+    about: Setup, the blueprint authoring grammar, and the local dev loop.
