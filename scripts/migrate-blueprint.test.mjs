@@ -120,3 +120,11 @@ test("orphan proofs: display math stays inside the blockquote", () => {
   // and no unquoted $$ leaked out of the quote
   assert.doesNotMatch(files[0].content, /^\$\$/m)
 })
+
+test("chapter titles: brace-wrapped \\chapter{{X}} unwraps", () => {
+  const src =
+    "\\chapter{{Filtrations, processes and martingales}}\\begin{definition}\\label{d}\nD.\n\\end{definition}"
+  const { files } = buildNativeChapters(src, { label: "L" })
+  assert.match(files[0].content, /title: 'Filtrations, processes and martingales'/)
+  assert.equal(files[0].name, "1-filtrations-processes-and-martingales.md")
+})

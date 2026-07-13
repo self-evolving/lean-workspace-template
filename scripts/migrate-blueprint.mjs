@@ -210,11 +210,33 @@ export function buildNativeChapters(tex, opts = {}) {
       return false
     })
 
-  // chapter titles may carry \ref{} ("Proof of Theorem \ref{thm:G}") — resolve
-  // to the target's display name as plain text
+  // chapter titles may be brace-wrapped (\chapter{{Filtrations, ...}} renders
+  // as "{Filtrations, ...}") and may carry \ref{} ("Proof of Theorem
+  // \ref{thm:G}") — unwrap, and resolve refs to the target's display name as
+  // plain text
+  const stripWrap = (t) => {
+    t = t.trim()
+    while (t.startsWith("{") && t.endsWith("}")) {
+      let depth = 0
+      let fullWrap = true
+      for (let i = 0; i < t.length; i++) {
+        if (t[i] === "{") depth++
+        else if (t[i] === "}") {
+          depth--
+          if (depth === 0 && i < t.length - 1) {
+            fullWrap = false
+            break
+          }
+        }
+      }
+      if (!fullWrap) break
+      t = t.slice(1, -1).trim()
+    }
+    return t
+  }
   const cleanTitle = (t) =>
     collapse(
-      t.replace(/\\[Cc]?(?:eq)?ref\{([^}]*)\}/g, (_, l) => {
+      stripWrap(t).replace(/\\[Cc]?(?:eq)?ref\{([^}]*)\}/g, (_, l) => {
         const target = itemByLabel.get(l.trim())
         return target ? target.displayName : displayNameOf(l.trim())
       }),
