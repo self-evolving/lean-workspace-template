@@ -13,12 +13,27 @@ importer can rebuild it here from the published pages alone — no Lean
 toolchain needed:
 
 ```bash
-node scripts/import-blueprint.mjs --base-url=https://example.github.io/Project/blueprint
+node scripts/import-blueprint.mjs --base-url=https://example.github.io/Project/blueprint \
+  --label="My Project blueprint"
 ```
 
 This renders generated per-item pages (`pageMode: item`). It is the fastest
-way to see your blueprint in the workspace, but the generated pages are a
-snapshot — treat it as a preview, not as the new source of truth.
+way to see your blueprint in the workspace, but know what you are getting:
+
+- **The pages are a frozen snapshot.** Statuses are read off the published
+  site at import time; `npm run blueprint:sync` will not refresh them — it
+  would overwrite the imported canvas with (empty) kernel data. Treat the
+  import as a preview, not as the new source of truth.
+- **By default it replaces `content/blueprint/`** (and registers itself in
+  `content/_meta.json`). Pass `--out=<name>` to write a trial import to
+  `content/<name>/` next to the demo instead.
+- **The Lean side is untouched.** The default import deletes the demo's
+  `.lean` chapter while `lakefile.toml` `roots` and `blueprint.config.json`
+  `lakeRoots` still name it, so `lake build` — including CI — fails until
+  you do the cleanup in
+  [work on an external Lean project](work-on-external-project) (step 5).
+- Without `--label`, the sidebar label will not be your project's name —
+  always pass it explicitly.
 
 ## Import a plan plus kernel data
 
@@ -28,6 +43,11 @@ kernel data, the importer can combine them directly:
 ```bash
 node scripts/import-blueprint.mjs --plan=path/to/plan --data=path/to/blueprint-data.json
 ```
+
+`--out` and `--label` work here too. Omitting `--data` is allowed and makes
+this a status-less trial conversion: every `\lean{}` reference reports "not
+found" and renders without a status. Like the scrape, the output is
+generated snapshot pages — the durable path is the next section.
 
 ## Re-author as reference chapters (recommended)
 
