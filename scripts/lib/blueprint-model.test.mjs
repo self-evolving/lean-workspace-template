@@ -7,6 +7,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
+  collectLeanDeclNames,
   computeStatusesAndEdges,
   githubSourceUrl,
   loadBlueprintConfig,
@@ -255,4 +256,20 @@ test("parsePlanTex parses the leanblueprint-convention fixture", () => {
     assert.ok(it.label, `item has a \\label (${it.kind})`)
     assert.ok(["definition", "lemma", "proposition", "theorem", "corollary"].includes(it.kind))
   }
+})
+
+test("collectLeanDeclNames: quoted lists, unquoted values, lean=next skipped, deduped + sorted", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bp-decls-"))
+  fs.writeFileSync(
+    path.join(dir, "01-a.md"),
+    '## Definition: x {#x lean="B.b, A.a"}\n\n## Lemma: y {#y lean=C.c uses="x"}\n',
+  )
+  fs.writeFileSync(
+    path.join(dir, "02-b.md"),
+    '## Definition: z {#z lean="A.a"}\n\n## Definition: w {#w lean=next}\n',
+  )
+  fs.writeFileSync(path.join(dir, "notes.txt"), 'lean="Ignored.name"\n')
+  assert.deepEqual(collectLeanDeclNames(dir), ["A.a", "B.b", "C.c"])
+  // missing directory degrades to an empty list, not a throw
+  assert.deepEqual(collectLeanDeclNames(path.join(dir, "nope")), [])
 })

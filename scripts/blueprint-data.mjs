@@ -13,7 +13,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawn } from "node:child_process"
-import { loadBlueprintConfig } from "./lib/blueprint-model.mjs"
+import { collectLeanDeclNames, loadBlueprintConfig } from "./lib/blueprint-model.mjs"
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const cfg = loadBlueprintConfig(ROOT)
@@ -29,32 +29,10 @@ const out = path.relative(ROOT, cfg.dataPath)
 
 // Chapters may reference declarations that live OUTSIDE the lakeRoots walk —
 // theory upstreamed to mathlib (leanblueprint's \mathlibok) or code in a
-// dependency package. Collect every lean="..." name from the blueprint's
-// markdown chapters and hand the list to the extractor, which resolves them
-// from the compiled environment regardless of their module of origin.
-const extraDeclNames = (() => {
-  const dir = path.dirname(cfg.dataPath)
-  const names = new Set()
-  let files = []
-  try {
-    files = fs.readdirSync(dir).filter((f) => f.endsWith(".md"))
-  } catch {
-    return []
-  }
-  for (const f of files) {
-    const src = fs.readFileSync(path.join(dir, f), "utf8")
-    for (const m of src.matchAll(/\blean=(?:"([^"]*)"|([^\s"}]+))/g)) {
-      const v = m[1] ?? m[2]
-      if (v === "next") continue // literate binding — the decl is in lakeRoots
-      for (const n of v
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean))
-        names.add(n)
-    }
-  }
-  return [...names].sort()
-})()
+// dependency package. Hand the extractor the list of chapter-referenced
+// names; it resolves them from the compiled environment regardless of their
+// module of origin.
+const extraDeclNames = collectLeanDeclNames(path.dirname(cfg.dataPath))
 
 const args = ["exe", "blueprint-data", out, ...cfg.lakeRoots]
 if (extraDeclNames.length) {

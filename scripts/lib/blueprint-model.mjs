@@ -67,6 +67,35 @@ export function loadBlueprintConfig(repoRoot, overrides = {}) {
   return cfg
 }
 
+// Collect every lean="..." declaration name referenced by the blueprint's
+// markdown chapters (deduped, sorted; `lean=next` is the literate-chapter
+// binding whose declaration already lives in lakeRoots). The extractor
+// resolves these from the compiled environment even when they live outside
+// the root modules — theory upstreamed to mathlib, code in a dependency
+// package (`lake exe blueprint-data ... --decls=<file>`).
+export function collectLeanDeclNames(blueprintDir) {
+  const names = new Set()
+  let files = []
+  try {
+    files = fs.readdirSync(blueprintDir).filter((f) => f.endsWith(".md"))
+  } catch {
+    return []
+  }
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(blueprintDir, f), "utf8")
+    for (const m of src.matchAll(/\blean=(?:"([^"]*)"|([^\s"}]+))/g)) {
+      const v = m[1] ?? m[2]
+      if (v === "next") continue
+      for (const n of v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean))
+        names.add(n)
+    }
+  }
+  return [...names].sort()
+}
+
 let cachedSourceRef = null
 export function sourceRef(fallback = "main") {
   if (cachedSourceRef) return cachedSourceRef
