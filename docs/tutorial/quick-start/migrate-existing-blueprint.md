@@ -59,6 +59,13 @@ folder's landing page —
 [work on an external Lean project](work-on-external-project) walks exactly
 those steps.
 
+`\cite{}` commands come out in pandoc syntax (`[@key]`). To render them as
+linked references, enable the `citations` plugin in `quartz.config.yaml`
+(shipped disabled) and provide a `bibliography.bib`. Keys are sanitized for
+pandoc — spaces and non-ascii letters are normalized (`first course` →
+`first-course`, `Beiglböck` → `Beiglbock`) — so apply the identical renames
+to the keys in your `.bib`.
+
 There is no `\leanok` to port: every item's status is recomputed from the
 compiled environment on each build, so the migrated blueprint cannot silently
 drift from the code.

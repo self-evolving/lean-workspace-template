@@ -99,3 +99,12 @@ test("texToMd via buildNativeChapters: inline $$ blocks get their own delimiter 
   // used to swallow the rest of the page as one unclosed math block
   assert.match(files[0].content, /\n\$\$\nX = \\begin\{cases\} 1 \\\\ 0 \\end\{cases\}\n\$\$\n/)
 })
+
+test("citations: pandoc syntax with sanitized keys; thebibliography truncates", () => {
+  const src =
+    "\\chapter{C}\\begin{definition}\\label{d}\nSee \\cite[Thm 2]{first course, Beiglböck2011}.\n\\end{definition}\n\\putbib\n\\begin{thebibliography}{9}\\bibitem{x} X.\\end{thebibliography}\nPostamble junk with \\badmacro that must not leak.\n"
+  const { files, warnings } = buildNativeChapters(src, { label: "L" })
+  assert.match(files[0].content, /\[@first-course; @Beiglbock2011, Thm 2\]/)
+  assert.doesNotMatch(files[0].content, /Postamble junk|thebibliography|putbib/)
+  assert.ok(warnings.some((w) => w.includes("thebibliography")))
+})

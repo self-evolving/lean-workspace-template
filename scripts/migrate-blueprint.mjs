@@ -86,9 +86,16 @@ function texToMd(tex, ctx) {
     .replace(/\\textit\{([^}]*)\}/g, "_$1_")
     .replace(/\\textbf\{([^}]*)\}/g, "**$1**")
     .replace(/\\footnote\{([^}]*)\}/g, " ($1)")
-    .replace(/\\cite(?:\[([^\]]*)\])?\{([^}]*)\}/g, (_, note, keys) =>
-      note ? `[${keys}, ${note}]` : `[${keys}]`,
-    )
+    .replace(/\\cite(?:\[([^\]]*)\])?\{([^}]*)\}/g, (_, note, keys) => {
+      // pandoc citation syntax for the citations plugin; the same key
+      // sanitization must be applied to bibliography.bib
+      const ks = keys
+        .split(",")
+        .map((k) => sanitizeCiteKey(k))
+        .filter(Boolean)
+      if (!ks.length) return ""
+      return `[${ks.map((k) => `@${k}`).join("; ")}${note ? `, ${note}` : ""}]`
+    })
   // leftover structure/marker commands
   s = s
     .replace(/\\label\{[^}]*\}/g, "")
@@ -133,6 +140,17 @@ const KIND_PREFIX_RE =
   /^(def|defn|definition|lem|lemma|thm|theorem|prop|proposition|cor|corollary|rem|remark|eg|ex|example)[:.]/i
 const displayNameOf = (label) => label.replace(KIND_PREFIX_RE, "").trim() || label
 
+// BibTeX keys with spaces or non-ascii letters break pandoc-style citation
+// parsing; the identical mapping must be applied to the keys in
+// bibliography.bib (e.g. "first course" -> first-course, Beiglböck -> Beiglbock).
+const sanitizeCiteKey = (k) =>
+  k
+    .trim()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^A-Za-z0-9_.:+-]/g, "-")
+
 // Convert a parsed plan (see tex-plan.mjs parsePlanTex) into native chapter
 // files plus the folder _meta.json. Pure: no fs, no flags — the CLI below and
 // the tests both call this.
@@ -140,14 +158,27 @@ export function buildNativeChapters(tex, opts = {}) {
   const chapterCmd = opts.chapterCmd ?? "chapter"
   const label = opts.label ?? "Blueprint"
   const macros = opts.macros ?? new Map()
-  const src = expandMacros(stripTexComments(tex), macros)
+
+  const stats = { items: 0, withLean: 0, mathlibok: 0, droppedUses: 0, orphanProofs: 0 }
+  const warnings = []
+
+  // \begin{thebibliography} ends the blueprint body: the citations plugin
+  // renders references from bibliography.bib, and what follows the env in
+  // these documents is postamble (addresses etc.). \putbib / \bibliography{}
+  // commands are likewise the plugin's job now.
+  let texBody = tex
+  const bibAt = texBody.search(/\\begin\{thebibliography\}/)
+  if (bibAt !== -1) {
+    warnings.push("dropping \\begin{thebibliography} block and everything after it")
+    texBody = texBody.slice(0, bibAt)
+  }
+  texBody = texBody.replace(/\\putbib\b|\\bibliography\{[^}]*\}|\\bibliographystyle\{[^}]*\}/g, "")
+
+  const src = expandMacros(stripTexComments(texBody), macros)
   const { chapters, parts } = parsePlanTex(src, {
     chapterCmd,
     kinds: [...PLAN_ENV_KINDS, ...Object.keys(MAPPED_KINDS)],
   })
-
-  const stats = { items: 0, withLean: 0, mathlibok: 0, droppedUses: 0, orphanProofs: 0 }
-  const warnings = []
 
   const itemByLabel = new Map()
   const allItems = chapters.flatMap((c) => c.items)
