@@ -11669,6 +11669,8 @@ canvas_inline_default += `
       container.dataset.hoverInit = "true"
       const parents = new Map()
       const children = new Map()
+      const neighbors = new Map()
+      const incidentEdges = new Map()
       const add = (m, k, v) => {
         if (!m.has(k)) m.set(k, new Set())
         m.get(k).add(v)
@@ -11677,6 +11679,10 @@ canvas_inline_default += `
       for (const g of edgeEls) {
         add(children, g.dataset.from, g.dataset.to)
         add(parents, g.dataset.to, g.dataset.from)
+        add(neighbors, g.dataset.from, g.dataset.to)
+        add(neighbors, g.dataset.to, g.dataset.from)
+        add(incidentEdges, g.dataset.from, g)
+        add(incidentEdges, g.dataset.to, g)
       }
       const nodeEls = new Map()
       for (const el of container.querySelectorAll(".canvas-node[data-node-id]")) {
@@ -11685,6 +11691,7 @@ canvas_inline_default += `
       const selectedIds = new Set()
       const cleanupFns = []
       let hoverId
+      let renderedHoverId
       let pointerStart
       let clickPointer
       let suppressClickUntil = 0
@@ -11790,12 +11797,40 @@ canvas_inline_default += `
         selectionPanel.hidden = !selectionPanel.hidden
         updateSelectionControl()
       }
+      const clearRenderedHover = () => {
+        if (!renderedHoverId) return
+        nodeEls.get(renderedHoverId)?.classList.remove("hover-focus")
+        for (const id of neighbors.get(renderedHoverId) ?? []) {
+          nodeEls.get(id)?.classList.remove("hover-neighbor")
+        }
+        for (const edge of incidentEdges.get(renderedHoverId) ?? []) {
+          edge.classList.remove("hover-edge")
+        }
+        renderedHoverId = undefined
+        container.classList.remove("canvas-hovering")
+      }
+      const renderHover = () => {
+        const nextId = selectedIds.size === 0 && hoverId && nodeEls.has(hoverId) ? hoverId : undefined
+        if (nextId === renderedHoverId) return
+        clearRenderedHover()
+        if (!nextId) return
+        renderedHoverId = nextId
+        container.classList.add("canvas-hovering")
+        nodeEls.get(nextId)?.classList.add("hover-focus")
+        for (const id of neighbors.get(nextId) ?? []) {
+          nodeEls.get(id)?.classList.add("hover-neighbor")
+        }
+        for (const edge of incidentEdges.get(nextId) ?? []) {
+          edge.classList.add("hover-edge")
+        }
+      }
       const clearClasses = () => {
         container.classList.remove("canvas-hovering", "canvas-selecting")
         for (const el of nodeEls.values()) {
           el.classList.remove("hover-focus", "hover-neighbor", "selection-focus", "selection-neighbor")
         }
         for (const el of edgeEls) el.classList.remove("hover-edge", "selection-edge")
+        renderedHoverId = undefined
       }
       const applyFocus = (ids, kind) => {
         const activeClass = kind === "selection" ? "canvas-selecting" : "canvas-hovering"
@@ -11818,7 +11853,7 @@ canvas_inline_default += `
         if (selectedIds.size > 0) {
           applyFocus(selectedIds, "selection")
         } else if (hoverId && nodeEls.has(hoverId)) {
-          applyFocus([hoverId], "hover")
+          renderHover()
         }
         updateSelectionControl()
       }
@@ -11873,29 +11908,35 @@ canvas_inline_default += `
         }
         clearSelection()
       }
-      for (const [id, el] of nodeEls) {
-        if (!el.classList.contains("canvas-node-file")) continue
-        const onEnter = () => {
-          hoverId = id
-          renderFocus()
-        }
-        const onLeave = () => {
-          if (hoverId === id) hoverId = undefined
-          renderFocus()
-        }
-        el.addEventListener("mouseenter", onEnter)
-        el.addEventListener("mouseleave", onLeave)
-        cleanupFns.push(() => {
-          el.removeEventListener("mouseenter", onEnter)
-          el.removeEventListener("mouseleave", onLeave)
-        })
+      const eventFileNode = (target) => {
+        const node = target instanceof Element ? target.closest(".canvas-node-file[data-node-id]") : null
+        const id = node?.dataset.nodeId
+        return id && nodeEls.get(id) === node ? { id, node } : undefined
       }
+      const handleMouseOver = (event) => {
+        const match = eventFileNode(event.target)
+        if (!match) return
+        if (event.relatedTarget instanceof Element && match.node.contains(event.relatedTarget)) return
+        hoverId = match.id
+        renderHover()
+      }
+      const handleMouseOut = (event) => {
+        const match = eventFileNode(event.target)
+        if (!match) return
+        if (event.relatedTarget instanceof Element && match.node.contains(event.relatedTarget)) return
+        if (hoverId === match.id) hoverId = undefined
+        renderHover()
+      }
+      container.addEventListener("mouseover", handleMouseOver)
+      container.addEventListener("mouseout", handleMouseOut)
       container.addEventListener("pointerdown", rememberPointer, true)
       container.addEventListener("pointermove", trackPointer, true)
       container.addEventListener("pointerup", finishPointer, true)
       container.addEventListener("click", handleClick)
       selectionControl?.addEventListener("click", toggleSelectionPanel)
       cleanupFns.push(() => {
+        container.removeEventListener("mouseover", handleMouseOver)
+        container.removeEventListener("mouseout", handleMouseOut)
         container.removeEventListener("pointerdown", rememberPointer, true)
         container.removeEventListener("pointermove", trackPointer, true)
         container.removeEventListener("pointerup", finishPointer, true)

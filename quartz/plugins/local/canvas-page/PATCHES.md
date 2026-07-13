@@ -92,3 +92,11 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     redundant wrapper and noninteractive SVG hit target per edge. Edges retain
     their individual color, dashed style, direction, labels, and focus classes
     while large canvases avoid thousands of duplicate elements.
+
+14. **Indexed and delegated hover focus** (focus inline script): node neighbors
+    and incident edges are indexed once during initialization, and two container
+    listeners replace per-card enter/leave listeners. Hover updates now touch
+    only the previous and next cards' local graph neighborhoods; they no longer
+    sweep every node and edge or rebuild the selection panel. Selection still
+    wins visually, while the latent hovered card is restored when selection is
+    cleared.
