@@ -245,6 +245,7 @@ async function rebuild(changes: ChangeEvent[], clientRefresh: () => void, buildD
   // kill the process; instead: report, keep serving the last good build, and
   // let the still-pending entries in changesSinceLastBuild retry on the next
   // change event.
+  let batchConsumed = false
   try {
     const perf = new PerfTimer()
     perf.addEvent("rebuild")
@@ -391,14 +392,17 @@ async function rebuild(changes: ChangeEvent[], clientRefresh: () => void, buildD
     )
     console.log(styleText("green", `Done rebuilding in ${perf.timeSince()}`))
     changes.splice(0, numChangesInBuild)
+    batchConsumed = true
     clientRefresh()
   } catch (err) {
     console.log(styleText("red", "Rebuild failed — still serving the last good build:"))
     console.log(styleText("gray", String((err as Error)?.stack ?? err)))
     // consume this batch's change events like the success path does; the
     // paths stay recorded in changesSinceLastBuild, so the next rebuild
-    // retries them once the files are consistent again
-    changes.splice(0, numChangesInBuild)
+    // retries them once the files are consistent again. Guarded: if the
+    // rebuild succeeded and only clientRefresh() threw, the batch is already
+    // consumed — splicing again here would drop unrelated queued events.
+    if (!batchConsumed) changes.splice(0, numChangesInBuild)
   } finally {
     release()
   }
