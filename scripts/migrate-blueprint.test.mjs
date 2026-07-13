@@ -136,3 +136,11 @@ test("print-layout commands are stripped, not rendered", () => {
   assert.doesNotMatch(files[0].content, /pagebreak|vspace/)
   assert.match(files[0].content, /Body tail\./)
 })
+
+test("inline \\(...\\) math converts to $...$", () => {
+  const src =
+    "\\chapter{C}\\begin{definition}\\label{d}\nLet \\( x \\in\n\\mathbb{R} \\) be given.\n\\end{definition}"
+  const { files } = buildNativeChapters(src, { label: "L" })
+  assert.match(files[0].content, /Let \$x \\in \\mathbb\{R\}\$ be given\./)
+  assert.doesNotMatch(files[0].content, /\\\(/)
+})
