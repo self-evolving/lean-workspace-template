@@ -117,7 +117,11 @@ To build or serve this repository's own `docs/` instead of `content/`, set the
 content root: `QUARTZ_CONTENT_ROOT=docs npm run build` (or `npm run dev`).
 
 The site builds from committed files only — deployment needs **no Lean toolchain**
-(`public/`, Vercel-ready).
+(`public/`, Vercel-ready). That includes declaration source snippets: the sync
+bakes each declaration's source text into `blueprint-data.json`, so workspaces
+that consume their Lean code as a Lake dependency render code on deployed
+builds too, where no `.lake/` checkout exists (a live checkout still wins over
+the baked text when present).
 
 ## CI (`.github/workflows/lean.yml`)
 

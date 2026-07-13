@@ -142,6 +142,8 @@ function snippetRepoPath(cfg, snippet) {
     const rel = repoRelativePath(cfg.repoRoot, snippet.absPath)
     if (rel) return rel
   }
+  // baked snippets (no local file at site-build time) carry no baseDir
+  if (!snippet.baseDir) return snippet.file
   return path.posix.join(path.basename(snippet.baseDir), snippet.file)
 }
 

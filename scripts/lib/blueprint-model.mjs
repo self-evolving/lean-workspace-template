@@ -609,12 +609,14 @@ export const dedentLines = (lines) => {
 }
 
 // Slice a declaration's source from disk (file resolved over srcDirs), extending
-// upward through a contiguous doc comment and attribute lines.
+// upward through a contiguous doc comment and attribute lines. When the file is
+// absent (deployed site builds have no .lake checkout), falls back to the
+// snippet text baked into the kernel data at sync time.
 export function declSnippet(decl, srcDirs) {
   if (!decl?.file || !decl.startLine) return null
   let abs = null
   let baseDir = null
-  for (const dir of srcDirs) {
+  for (const dir of srcDirs ?? []) {
     const candidate = path.join(dir, decl.file)
     if (fs.existsSync(candidate)) {
       abs = candidate
@@ -622,7 +624,19 @@ export function declSnippet(decl, srcDirs) {
       break
     }
   }
-  if (!abs) return null
+  if (!abs) {
+    if (decl.snippet?.code) {
+      return {
+        file: decl.file,
+        absPath: null,
+        baseDir: null,
+        startLine: decl.snippet.startLine ?? decl.startLine,
+        endLine: decl.endLine,
+        code: decl.snippet.code,
+      }
+    }
+    return null
+  }
   const lines = fs.readFileSync(abs, "utf8").split("\n")
   let start = decl.startLine - 1
   while (start > 0) {
@@ -649,6 +663,27 @@ export function declSnippet(decl, srcDirs) {
     endLine: decl.endLine,
     code: dedentLines(lines.slice(start, decl.endLine)),
   }
+}
+
+// Bake each declaration's source text into the kernel data (mutates
+// data.decls). Runs at sync time — where the Lake checkout exists — so that
+// deployed site builds, which have no .lake/, can still render snippets via
+// declSnippet's fallback. Re-slices from disk only (an existing baked snippet
+// is refreshed, never trusted), storing the doc-comment-extended start line.
+export function bakeSnippets(data, srcDirs) {
+  let baked = 0
+  let missing = 0
+  for (const d of data.decls ?? []) {
+    if (!d.file || !d.startLine) continue
+    const s = declSnippet({ ...d, snippet: undefined }, srcDirs)
+    if (s?.absPath) {
+      d.snippet = { startLine: s.startLine, code: s.code }
+      baked++
+    } else {
+      missing++
+    }
+  }
+  return { baked, missing }
 }
 
 export function inlineCodeBlocks(md, anchors, kernel, where, srcDirs) {

@@ -1,42 +1,96 @@
-{"rootModules": ["Ch01_SumsOfOddNumbers"],
- "decls":
- [{"valueUses": [],
-   "usedConstants": [],
-   "typeUses": [],
-   "startLine": 16,
-   "name": "Demo.sumOdds",
-   "kind": "def",
-   "hasSorry": false,
-   "file": "Ch01_SumsOfOddNumbers.lean",
-   "endLine": 19,
-   "axioms": []},
-  {"valueUses": ["Demo.sumOdds", "Demo.sumOdds_succ"],
-   "usedConstants": ["Demo.sumOdds", "Demo.sumOdds_succ"],
-   "typeUses": ["Demo.sumOdds"],
-   "startLine": 45,
-   "name": "Demo.sumOdds_eq_sq",
-   "kind": "theorem",
-   "hasSorry": false,
-   "file": "Ch01_SumsOfOddNumbers.lean",
-   "endLine": 52,
-   "axioms": ["Quot.sound", "propext"]},
-  {"valueUses": ["Demo.sumOdds"],
-   "usedConstants": ["Demo.sumOdds"],
-   "typeUses": ["Demo.sumOdds"],
-   "startLine": 66,
-   "name": "Demo.sumOdds_pos",
-   "kind": "theorem",
-   "hasSorry": true,
-   "file": "Ch01_SumsOfOddNumbers.lean",
-   "endLine": 68,
-   "axioms": ["sorryAx"]},
-  {"valueUses": ["Demo.sumOdds"],
-   "usedConstants": ["Demo.sumOdds"],
-   "typeUses": ["Demo.sumOdds"],
-   "startLine": 30,
-   "name": "Demo.sumOdds_succ",
-   "kind": "theorem",
-   "hasSorry": false,
-   "file": "Ch01_SumsOfOddNumbers.lean",
-   "endLine": 31,
-   "axioms": []}]}
+{
+  "rootModules": [
+    "Ch01_SumsOfOddNumbers"
+  ],
+  "decls": [
+    {
+      "valueUses": [],
+      "usedConstants": [],
+      "typeUses": [],
+      "startLine": 16,
+      "name": "Demo.sumOdds",
+      "kind": "def",
+      "hasSorry": false,
+      "file": "Ch01_SumsOfOddNumbers.lean",
+      "endLine": 19,
+      "axioms": [],
+      "snippet": {
+        "startLine": 16,
+        "code": "/-- Sum of the first `n` odd numbers: `1 + 3 + ⋯ + (2n − 1)`. -/\ndef sumOdds : Nat → Nat\n  | 0 => 0\n  | n + 1 => sumOdds n + (2 * n + 1)"
+      }
+    },
+    {
+      "valueUses": [
+        "Demo.sumOdds",
+        "Demo.sumOdds_succ"
+      ],
+      "usedConstants": [
+        "Demo.sumOdds",
+        "Demo.sumOdds_succ"
+      ],
+      "typeUses": [
+        "Demo.sumOdds"
+      ],
+      "startLine": 45,
+      "name": "Demo.sumOdds_eq_sq",
+      "kind": "theorem",
+      "hasSorry": false,
+      "file": "Ch01_SumsOfOddNumbers.lean",
+      "endLine": 52,
+      "axioms": [
+        "Quot.sound",
+        "propext"
+      ],
+      "snippet": {
+        "startLine": 45,
+        "code": "/-- The sum of the first `n` odd numbers is `n²`. -/\ntheorem sumOdds_eq_sq (n : Nat) : sumOdds n = n * n := by\n  induction n with\n  | zero => rfl\n  | succ n ih =>\n    rw [sumOdds_succ, ih]\n    simp only [Nat.add_mul, Nat.mul_add, Nat.mul_one, Nat.one_mul]\n    omega"
+      }
+    },
+    {
+      "valueUses": [
+        "Demo.sumOdds"
+      ],
+      "usedConstants": [
+        "Demo.sumOdds"
+      ],
+      "typeUses": [
+        "Demo.sumOdds"
+      ],
+      "startLine": 66,
+      "name": "Demo.sumOdds_pos",
+      "kind": "theorem",
+      "hasSorry": true,
+      "file": "Ch01_SumsOfOddNumbers.lean",
+      "endLine": 68,
+      "axioms": [
+        "sorryAx"
+      ],
+      "snippet": {
+        "startLine": 66,
+        "code": "/-- The sum of the first `n + 1` odd numbers is positive. Open starter task. -/\ntheorem sumOdds_pos (n : Nat) : 0 < sumOdds (n + 1) := by\n  sorry"
+      }
+    },
+    {
+      "valueUses": [
+        "Demo.sumOdds"
+      ],
+      "usedConstants": [
+        "Demo.sumOdds"
+      ],
+      "typeUses": [
+        "Demo.sumOdds"
+      ],
+      "startLine": 30,
+      "name": "Demo.sumOdds_succ",
+      "kind": "theorem",
+      "hasSorry": false,
+      "file": "Ch01_SumsOfOddNumbers.lean",
+      "endLine": 31,
+      "axioms": [],
+      "snippet": {
+        "startLine": 30,
+        "code": "/-- Unfolding lemma: adding the `(n+1)`-st odd number. -/\ntheorem sumOdds_succ (n : Nat) : sumOdds (n + 1) = sumOdds n + (2 * n + 1) := rfl"
+      }
+    }
+  ]
+}
