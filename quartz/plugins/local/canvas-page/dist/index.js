@@ -11842,26 +11842,22 @@ canvas_inline_default += `
         for (const el of edgeEls) el.classList.remove("hover-edge", "selection-edge")
         renderedHoverId = undefined
       }
-      const applyFocus = (ids, kind) => {
-        const activeClass = kind === "selection" ? "canvas-selecting" : "canvas-hovering"
-        const focusClass = kind === "selection" ? "selection-focus" : "hover-focus"
-        const neighborClass = kind === "selection" ? "selection-neighbor" : "hover-neighbor"
-        const edgeClass = kind === "selection" ? "selection-edge" : "hover-edge"
+      const applySelectionFocus = (ids) => {
         const focusIds = new Set(ids)
-        container.classList.add(activeClass)
+        container.classList.add("canvas-selecting")
         for (const id of focusIds) {
-          nodeEls.get(id)?.classList.add(focusClass)
-          for (const p of parents.get(id) ?? []) nodeEls.get(p)?.classList.add(neighborClass)
-          for (const c of children.get(id) ?? []) nodeEls.get(c)?.classList.add(neighborClass)
+          nodeEls.get(id)?.classList.add("selection-focus")
+          for (const p of parents.get(id) ?? []) nodeEls.get(p)?.classList.add("selection-neighbor")
+          for (const c of children.get(id) ?? []) nodeEls.get(c)?.classList.add("selection-neighbor")
         }
         for (const g of edgeEls) {
-          if (focusIds.has(g.dataset.from) || focusIds.has(g.dataset.to)) g.classList.add(edgeClass)
+          if (focusIds.has(g.dataset.from) || focusIds.has(g.dataset.to)) g.classList.add("selection-edge")
         }
       }
       const renderFocus = () => {
         clearClasses()
         if (selectedIds.size > 0) {
-          applyFocus(selectedIds, "selection")
+          applySelectionFocus(selectedIds)
         } else if (hoverId && nodeEls.has(hoverId)) {
           renderHover()
         }
