@@ -100,9 +100,10 @@ function texToMd(tex, ctx) {
   s = s
     .replace(/\\label\{[^}]*\}/g, "")
     .replace(
-      /\\(?:mathlibok|notready|leanok|noindent|centering|medskip|smallskip|bigskip|newpage|clearpage)\b/g,
+      /\\(?:mathlibok|notready|leanok|noindent|centering|medskip|smallskip|bigskip|newpage|clearpage|pagebreak|nopagebreak|linebreak|allowbreak|vfill|hfill)\b(?:\[[^\]]*\])?/g,
       "",
     )
+    .replace(/\\[vh]space\*?\{[^}]*\}/g, "")
     .replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}/g, "_(figure: $1)_")
   // ~ is a non-breaking space (KaTeX renders it as a space inside math too)
   s = s.replace(/(?<!\\)~/g, " ")

@@ -128,3 +128,11 @@ test("chapter titles: brace-wrapped \\chapter{{X}} unwraps", () => {
   assert.match(files[0].content, /title: 'Filtrations, processes and martingales'/)
   assert.equal(files[0].name, "1-filtrations-processes-and-martingales.md")
 })
+
+test("print-layout commands are stripped, not rendered", () => {
+  const src =
+    "\\chapter{C}\nProse.\n\\pagebreak\n\\begin{definition}\\label{d}\nBody\\vspace{1em} tail.\\pagebreak[3]\n\\end{definition}"
+  const { files } = buildNativeChapters(src, { label: "L" })
+  assert.doesNotMatch(files[0].content, /pagebreak|vspace/)
+  assert.match(files[0].content, /Body tail\./)
+})
