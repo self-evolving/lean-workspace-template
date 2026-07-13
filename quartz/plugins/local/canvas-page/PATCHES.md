@@ -106,3 +106,11 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     CSS mask. This removes an identical inline SVG, rectangle, and two paths from
     every file card without changing its label, hit target, color, or click
     behavior.
+
+16. **Frame-coalesced canvas interactions** (base inline script): drag, wheel,
+    and pinch events still update pan/zoom state synchronously, but commit the
+    latest viewport transform and reset-control state at most once per animation
+    frame. Identical transform/display writes are skipped; wheel geometry is read
+    once per frame, pinch geometry once per gesture, and all queued render/layout
+    frames are canceled during Quartz navigation cleanup. Initial fitting and
+    discrete controls remain synchronous.
