@@ -10974,10 +10974,6 @@ var canvas_default = `.canvas-page {
   overflow: visible;
 }
 
-.canvas-edge path {
-  pointer-events: stroke;
-}
-
 .canvas-edge-label-bg {
   fill: var(--light);
   fill-opacity: 0.85;
@@ -11436,14 +11432,14 @@ body.canvas-preview-resizing {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.canvas-edges path {
+.canvas-edges path.canvas-edge {
   opacity: 0.75;
 }
 
 /* hover focus: dim everything but the hovered card, its direct parents/children,
    and the incident edges */
 .canvas-node,
-.canvas-edges path {
+.canvas-edges path.canvas-edge {
   transition: opacity 0.15s ease;
 }
 .canvas-hovering .canvas-node {
@@ -11456,10 +11452,10 @@ body.canvas-preview-resizing {
 .canvas-hovering .canvas-node.hover-focus {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
-.canvas-hovering .canvas-edges .canvas-edge path {
+.canvas-hovering .canvas-edges path.canvas-edge {
   opacity: 0.06;
 }
-.canvas-hovering .canvas-edges .canvas-edge.hover-edge path {
+.canvas-hovering .canvas-edges path.canvas-edge.hover-edge {
   opacity: 1;
   stroke-width: 2.5;
 }
@@ -11474,10 +11470,10 @@ body.canvas-preview-resizing {
   box-shadow: 0 0 0 2px var(--secondary), 0 4px 16px rgba(0, 0, 0, 0.22);
   z-index: 2;
 }
-.canvas-selecting .canvas-edges .canvas-edge path {
+.canvas-selecting .canvas-edges path.canvas-edge {
   opacity: 0.06;
 }
-.canvas-selecting .canvas-edges .canvas-edge.selection-edge path {
+.canvas-selecting .canvas-edges path.canvas-edge.selection-edge {
   opacity: 1;
   stroke-width: 2.5;
 }
@@ -12535,7 +12531,60 @@ function computeAnchorPlan(edges, nodeMap) {
   }
   return plan;
 }
-function renderEdge(edge, nodeMap, anchorPlan) {
+function markerScopeId(slug2) {
+  let hash = 2166136261;
+  for (let i = 0; i < slug2.length; i++) {
+    hash ^= slug2.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+function computeMarkerPlan(edges, nodeMap, slug2) {
+  const markers = [];
+  const markerIds = {
+    start: /* @__PURE__ */ new Map(),
+    end: /* @__PURE__ */ new Map()
+  };
+  const byEdge = /* @__PURE__ */ new Map();
+  const scope = markerScopeId(slug2);
+  const markerId = (position, stroke) => {
+    const ids = markerIds[position];
+    const existing = ids.get(stroke);
+    if (existing) return existing;
+    const id = `canvas-arrow-${scope}-${position}-${ids.size}`;
+    ids.set(stroke, id);
+    markers.push({ id, position, stroke });
+    return id;
+  };
+  for (const edge of edges) {
+    if (!nodeMap.has(edge.fromNode) || !nodeMap.has(edge.toNode)) continue;
+    const stroke = resolveColor(edge.color) ?? "var(--gray)";
+    const ids = {};
+    if (edge.fromEnd === "arrow") ids.start = markerId("start", stroke);
+    if ((edge.toEnd ?? "arrow") === "arrow") ids.end = markerId("end", stroke);
+    byEdge.set(edge, ids);
+  }
+  return { markers, byEdge };
+}
+function renderEdgeMarkers(markerPlan) {
+  if (markerPlan.markers.length === 0) return null;
+  return /* @__PURE__ */ u2("defs", { children: markerPlan.markers.map(
+    ({ id, position, stroke }) => /* @__PURE__ */ u2(
+      "marker",
+      {
+        id,
+        viewBox: "0 0 10 10",
+        refX: position === "start" ? "1.5" : "8.5",
+        refY: "5",
+        markerWidth: "5",
+        markerHeight: "5",
+        orient: "auto-start-reverse",
+        children: /* @__PURE__ */ u2("path", { d: position === "start" ? "M 10 0 L 0 5 L 10 10 z" : "M 0 0 L 10 5 L 0 10 z", fill: stroke })
+      }
+    )
+  ) });
+}
+function renderEdge(edge, nodeMap, anchorPlan, markerPlan) {
   const fromNode = nodeMap.get(edge.fromNode);
   const toNode = nodeMap.get(edge.toNode);
   if (!fromNode || !toNode) return null;
@@ -12546,8 +12595,7 @@ function renderEdge(edge, nodeMap, anchorPlan) {
   const stroke = color ?? "var(--gray)";
   const hasFromArrow = edge.fromEnd === "arrow";
   const hasToArrow = (edge.toEnd ?? "arrow") === "arrow";
-  const markerId = `arrow-${edge.id}`;
-  const markerStartId = `arrow-start-${edge.id}`;
+  const markerIds = markerPlan?.byEdge.get(edge);
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const midX = from.x + dx / 2;
@@ -12571,45 +12619,21 @@ function renderEdge(edge, nodeMap, anchorPlan) {
   const [fnx, fny] = sideNormal(edge.fromSide);
   const [tnx, tny] = sideNormal(edge.toSide);
   const pathD = `M ${from.x} ${from.y} C ${from.x + fnx} ${from.y + fny}, ${to.x + tnx} ${to.y + tny}, ${to.x} ${to.y}`;
-  return /* @__PURE__ */ u2("g", { class: "canvas-edge", "data-edge-id": edge.id, "data-from": edge.fromNode, "data-to": edge.toNode, children: [
-    /* @__PURE__ */ u2("defs", { children: [
-      hasToArrow && /* @__PURE__ */ u2(
-        "marker",
-        {
-          id: markerId,
-          viewBox: "0 0 10 10",
-          refX: "8.5",
-          refY: "5",
-          markerWidth: "5",
-          markerHeight: "5",
-          orient: "auto-start-reverse",
-          children: /* @__PURE__ */ u2("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: stroke })
-        }
-      ),
-      hasFromArrow && /* @__PURE__ */ u2(
-        "marker",
-        {
-          id: markerStartId,
-          viewBox: "0 0 10 10",
-          refX: "1.5",
-          refY: "5",
-          markerWidth: "5",
-          markerHeight: "5",
-          orient: "auto-start-reverse",
-          children: /* @__PURE__ */ u2("path", { d: "M 10 0 L 0 5 L 10 10 z", fill: stroke })
-        }
-      )
-    ] }),
+  return [
     /* @__PURE__ */ u2(
       "path",
       {
+        class: "canvas-edge",
+        "data-edge-id": edge.id,
+        "data-from": edge.fromNode,
+        "data-to": edge.toNode,
         d: pathD,
         fill: "none",
         stroke,
         "stroke-width": "1.75",
         "stroke-dasharray": edge.dashed ? "7 5" : void 0,
-        "marker-end": hasToArrow ? `url(#${markerId})` : void 0,
-        "marker-start": hasFromArrow ? `url(#${markerStartId})` : void 0
+        "marker-end": hasToArrow && markerIds?.end ? `url(#${markerIds.end})` : void 0,
+        "marker-start": hasFromArrow && markerIds?.start ? `url(#${markerIds.start})` : void 0
       }
     ),
     edge.label && /* @__PURE__ */ u2("g", { class: "canvas-edge-label-group", children: [
@@ -12626,7 +12650,7 @@ function renderEdge(edge, nodeMap, anchorPlan) {
       ),
       /* @__PURE__ */ u2("text", { x: midX, y: midY, class: "canvas-edge-label", "text-anchor": "middle", dy: "-8", children: edge.label })
     ] })
-  ] });
+  ];
 }
 function renderLegend(legend) {
   const swatchStyle = (color) => {
@@ -12690,6 +12714,8 @@ var CanvasBody_default = ((userOpts) => {
     const initialZoom = opts.initialZoom ?? 1;
     const minZoom = opts.minZoom ?? 0.1;
     const maxZoom = opts.maxZoom ?? 5;
+    const anchorPlan = computeAnchorPlan(edges, nodeMap);
+    const markerPlan = computeMarkerPlan(edges, nodeMap, slug2);
     return /* @__PURE__ */ u2("article", { class: "canvas-page popover-hint", children: /* @__PURE__ */ u2(
       "div",
       {
@@ -12843,10 +12869,10 @@ var CanvasBody_default = ((userOpts) => {
                 width: viewWidth,
                 height: viewHeight,
                 viewBox: `${minX - padding} ${minY - padding} ${viewWidth} ${viewHeight}`,
-                children: (() => {
-                  const anchorPlan = computeAnchorPlan(edges, nodeMap);
-                  return edges.map((edge) => renderEdge(edge, nodeMap, anchorPlan));
-                })()
+                children: [
+                  renderEdgeMarkers(markerPlan),
+                  edges.map((edge) => renderEdge(edge, nodeMap, anchorPlan, markerPlan))
+                ]
               }
             ),
             /* @__PURE__ */ u2(

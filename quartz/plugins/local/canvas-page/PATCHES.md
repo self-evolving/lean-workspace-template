@@ -84,3 +84,11 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     card rows reserve space for their action buttons, and preview hash
     highlighting resolves hidden blueprint label anchors to the visible heading
     with an in-place shaded marker.
+
+13. **Compact SVG edge DOM** (`computeMarkerPlan` + `renderEdgeMarkers` +
+    `renderEdge`): arrowhead definitions are emitted once per canvas, direction,
+    and resolved stroke color instead of once per edge. The visible route path
+    now carries the edge class and data attributes directly, eliminating a
+    redundant wrapper and noninteractive SVG hit target per edge. Edges retain
+    their individual color, dashed style, direction, labels, and focus classes
+    while large canvases avoid thousands of duplicate elements.
