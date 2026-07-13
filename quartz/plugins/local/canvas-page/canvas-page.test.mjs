@@ -99,3 +99,23 @@ test("omits marker definitions when no edge has an arrow", () => {
   assert.doesNotMatch(html, /<marker/);
   assert.doesNotMatch(html, /marker-(?:start|end)=/);
 });
+
+test("shares the decorative sidebar icon through CSS", () => {
+  const Component = CanvasBody();
+  const html = render(
+    Component({
+      fileData: {
+        slug: "blueprint/test.canvas",
+        canvasData: { nodes, edges: [] },
+      },
+      allFiles: [],
+    }),
+  );
+  const buttons = [...html.matchAll(/<button class="canvas-open-sidebar"[^>]*>(.*?)<\/button>/g)];
+
+  assert.equal(buttons.length, nodes.length);
+  assert.ok(buttons.every((match) => match[1] === ""));
+  assert.match(html, /aria-label="Open A in sidebar"/);
+  assert.match(Component.css, /\.canvas-open-sidebar::before/);
+  assert.match(Component.css, /mask-image: url\("data:image\/svg\+xml/);
+});

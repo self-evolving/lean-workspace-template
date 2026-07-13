@@ -11405,8 +11405,16 @@ body.canvas-preview-resizing {
   background: color-mix(in srgb, var(--canvas-node-color, var(--secondary)) 16%, var(--light));
   opacity: 1;
 }
-.canvas-open-sidebar svg {
-  pointer-events: none;
+.canvas-open-sidebar::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M9 4v16'/%3E%3Cpath d='m14 9 3 3-3 3'/%3E%3C/svg%3E");
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
 }
 .canvas-node-file .canvas-file-label > a {
   min-width: 0;
@@ -12357,26 +12365,7 @@ function resolveEmbeddedHtml(fileSlug, canvasSlug, allFiles, subpath, visited) {
 }
 function renderSidebarButton(href, title) {
   const label = title ? `Open ${title} in sidebar` : "Open page in sidebar";
-  return /* @__PURE__ */ u2("button", { class: "canvas-open-sidebar", type: "button", "data-href": href, "data-title": title ?? "", "aria-label": label, title: "Open in sidebar", children: /* @__PURE__ */ u2(
-    "svg",
-    {
-      xmlns: "http://www.w3.org/2000/svg",
-      width: "14",
-      height: "14",
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ u2("rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }),
-        /* @__PURE__ */ u2("path", { d: "M9 4v16" }),
-        /* @__PURE__ */ u2("path", { d: "m14 9 3 3-3 3" })
-      ]
-    }
-  ) });
+  return /* @__PURE__ */ u2("button", { class: "canvas-open-sidebar", type: "button", "data-href": href, "data-title": title ?? "", "aria-label": label, title: "Open in sidebar" });
 }
 function renderNode(node, renderedTexts, slug2, allFiles, visited) {
   const color = resolveColor(node.color);

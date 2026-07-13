@@ -100,3 +100,9 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     sweep every node and edge or rebuild the selection panel. Selection still
     wins visually, while the latent hovered card is restored when selection is
     cleared.
+
+15. **Shared card action icon** (`renderSidebarButton` + CSS): the accessible
+    sidebar-preview button is now empty and draws its decorative icon from one
+    CSS mask. This removes an identical inline SVG, rectangle, and two paths from
+    every file card without changing its label, hit target, color, or click
+    behavior.
