@@ -46,7 +46,11 @@ const extraDeclNames = (() => {
     for (const m of src.matchAll(/\blean=(?:"([^"]*)"|([^\s"}]+))/g)) {
       const v = m[1] ?? m[2]
       if (v === "next") continue // literate binding — the decl is in lakeRoots
-      for (const n of v.split(",").map((s) => s.trim()).filter(Boolean)) names.add(n)
+      for (const n of v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean))
+        names.add(n)
     }
   }
   return [...names].sort()
