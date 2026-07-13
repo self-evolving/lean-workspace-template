@@ -717,7 +717,8 @@ export function buildLeanSection(item, kernel, srcDirs) {
   for (const name of item.leanDeclNames ?? []) {
     const s = declSnippet(kernel.get(name), srcDirs)
     if (!s) continue
-    const loc = path.posix.join(path.basename(s.baseDir), s.file)
+    // baked snippets (no local file) carry no baseDir
+    const loc = s.baseDir ? path.posix.join(path.basename(s.baseDir), s.file) : s.file
     blocks.push(
       `**\`${name}\`** — \`${loc}:${s.startLine}–${s.endLine}\`\n\n` +
         "```lean\n" +

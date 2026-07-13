@@ -125,7 +125,10 @@ child.on("close", (code) => {
           (missing ? ` (${missing} without a resolvable source file)` : ""),
       )
     } catch (e) {
-      console.warn(`blueprint-data: snippet baking failed: ${e.message}`)
+      // fail loudly: exiting 0 here would let CI commit and deploy kernel
+      // data without the snippets this step exists to provide
+      console.error(`blueprint-data: snippet baking failed: ${e.message}`)
+      process.exit(1)
     }
   }
   process.exit(code ?? 1)
