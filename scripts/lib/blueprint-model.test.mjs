@@ -7,6 +7,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
+  buildSourceModel,
   computeStatusesAndEdges,
   githubSourceUrl,
   loadBlueprintConfig,
@@ -255,4 +256,36 @@ test("parsePlanTex parses the leanblueprint-convention fixture", () => {
     assert.ok(it.label, `item has a \\label (${it.kind})`)
     assert.ok(["definition", "lemma", "proposition", "theorem", "corollary"].includes(it.kind))
   }
+})
+
+test("buildSourceModel: part folders recurse one level with global numbering", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bp-parts-"))
+  fs.writeFileSync(
+    path.join(dir, "_meta.json"),
+    JSON.stringify({ label: "L", pages: ["01-intro", "1-part-one"] }),
+  )
+  fs.writeFileSync(
+    path.join(dir, "01-intro.md"),
+    '---\ntitle: "Intro"\n---\n\n## Definition: a {#def:a}\n\nA.\n',
+  )
+  fs.mkdirSync(path.join(dir, "1-part-one"))
+  fs.writeFileSync(
+    path.join(dir, "1-part-one", "_meta.json"),
+    JSON.stringify({ label: "Part One", pages: ["02-inner"] }),
+  )
+  fs.writeFileSync(
+    path.join(dir, "1-part-one", "02-inner.md"),
+    '---\ntitle: "Inner"\n---\n\n## Lemma: b {#lem:b uses="def:a"}\n\nB.\n',
+  )
+  const model = buildSourceModel({ blueprintDir: dir, dataPath: null, leanSrcDirs: [dir] })
+  assert.deepEqual(
+    model.chapters.map((c) => [c.num, c.slug]),
+    [
+      [1, "01-intro"],
+      [2, "1-part-one/02-inner"],
+    ],
+  )
+  // cross-folder reference target resolves through the shared label index
+  assert.ok(model.itemByLabel.has("def:a"))
+  assert.equal(model.itemByLabel.get("lem:b").chapter.slug, "1-part-one/02-inner")
 })

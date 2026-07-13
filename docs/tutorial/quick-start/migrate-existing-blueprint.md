@@ -50,7 +50,10 @@ statuses, dependency edges, and source snippets recompute on every sync, and
 explicit `uses=` is only needed where
 [inference doesn't apply](../../documentation/grammar#dependencies-inferred-from-the-kernel).
 Blueprints built with plastex `split-level=1` (where `\section` is the
-chapter unit) pass `--chapter-level=section`.
+chapter unit) pass `--chapter-level=section`. Blueprints with `\part{}`
+headings can keep their two-level outline: `--part-folders` groups the
+chapters into per-part folders — the sidebar shows each part as a labeled
+section, and chapter URLs become `/blueprint/<part>/<chapter>`.
 
 The script deliberately converts content only, and prints the checklist of
 what remains: adopting the Lean code itself (`[[require]]` or copy-in,

@@ -136,3 +136,40 @@ test("print-layout commands are stripped, not rendered", () => {
   assert.doesNotMatch(files[0].content, /pagebreak|vspace/)
   assert.match(files[0].content, /Body tail\./)
 })
+
+test("--part-folders: chapters grouped by \\part, per-part _meta.json, preface stays at root", () => {
+  const src =
+    "\\chapter{Preface}\\begin{definition}\\label{p}\nP.\n\\end{definition}\n" +
+    "\\part{Brownian motion}\\chapter{Alpha}\\begin{definition}\\label{a}\nA.\n\\end{definition}\n" +
+    "\\part{Stochastic integral}\\chapter{Beta}\\begin{definition}\\label{b}\nB.\n\\end{definition}\n"
+  const { files, meta, partMetas } = buildNativeChapters(src, {
+    label: "L",
+    partFolders: true,
+  })
+  assert.deepEqual(
+    files.map((f) => [f.dir, f.name]),
+    [
+      ["", "1-preface.md"],
+      ["1-brownian-motion", "2-alpha.md"],
+      ["2-stochastic-integral", "3-beta.md"],
+    ],
+  )
+  // root nav: pre-part chapters first, then the part folders
+  assert.deepEqual(meta.pages, ["1-preface", "1-brownian-motion", "2-stochastic-integral"])
+  assert.deepEqual(partMetas, [
+    { dir: "1-brownian-motion", meta: { label: "Brownian motion", pages: ["2-alpha"] } },
+    { dir: "2-stochastic-integral", meta: { label: "Stochastic integral", pages: ["3-beta"] } },
+  ])
+})
+
+test("--part-folders without \\part headings warns and stays flat", () => {
+  const src = "\\chapter{Only}\\begin{definition}\\label{d}\nD.\n\\end{definition}"
+  const { files, meta, partMetas, warnings } = buildNativeChapters(src, {
+    label: "L",
+    partFolders: true,
+  })
+  assert.equal(files[0].dir, "")
+  assert.deepEqual(meta.pages, ["1-only"])
+  assert.deepEqual(partMetas, [])
+  assert.ok(warnings.some((w) => w.includes("no \\part{}")))
+})
