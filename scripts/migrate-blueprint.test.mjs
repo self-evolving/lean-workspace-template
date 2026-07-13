@@ -66,7 +66,7 @@ test("buildNativeChapters: native items, kinds, uses hygiene, proofs", () => {
   // chapter-title \ref resolved to the item's display name
   assert.equal(files[1].name, "2-proof-of-theorem-map.md")
   // orphan proof kept as quoted prose
-  assert.match(files[1].content, /> \*\*Proof\.\*\* An orphan proof block\./)
+  assert.match(files[1].content, /> \*\*Proof\.\*\*\n> An orphan proof block\./)
   assert.equal(stats.orphanProofs, 1)
 
   // _meta.json: label + chapters, and NO dep-graph entry until the first sync
@@ -107,4 +107,16 @@ test("citations: pandoc syntax with sanitized keys; thebibliography truncates", 
   assert.match(files[0].content, /\[@first-course; @Beiglbock2011, Thm 2\]/)
   assert.doesNotMatch(files[0].content, /Postamble junk|thebibliography|putbib/)
   assert.ok(warnings.some((w) => w.includes("thebibliography")))
+})
+
+test("orphan proofs: display math stays inside the blockquote", () => {
+  const src =
+    "\\chapter{C}\nProse.\n\\begin{proof}\\uses{x}\nBecause \\[ a = b \\] holds.\n\\end{proof}\n\\begin{definition}\\label{d}\nD.\n\\end{definition}"
+  const { files } = buildNativeChapters(src, { label: "L" })
+  // every line of the quoted proof carries the "> " prefix, including the
+  // $$ delimiter lines the display-math normalization produces
+  assert.match(files[0].content, /> \*\*Proof\.\*\*\n> Because/)
+  assert.match(files[0].content, /> \$\$\n> a = b\n> \$\$/)
+  // and no unquoted $$ leaked out of the quote
+  assert.doesNotMatch(files[0].content, /^\$\$/m)
 })

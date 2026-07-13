@@ -117,13 +117,23 @@ function proseToMd(tex, ctx, chapterCmd, stats) {
   if (chapterCmd === "chapter")
     s = s.replace(/\\section\*?\{([^}]*)\}/g, (_, t) => `\n**${collapse(t)}**\n`)
   s = s.replace(/\\(?:sub)+section\*?\{([^}]*)\}/g, (_, t) => `\n**${collapse(t)}**\n`)
+  // Orphan proofs are converted eagerly and stashed behind placeholders: their
+  // display math must be quote-prefixed line by line, and running the outer
+  // texToMd over the finished blockquote would re-normalize $$ delimiters and
+  // strip the "> " prefixes, letting the math escape the quote.
+  const stashed = []
   s = s.replace(/\\begin\{proof\}([\s\S]*?)\\end\{proof\}/g, (_, body) => {
     stats.orphanProofs++
-    // strip \uses{}/\leanok directives so they don't leak into prose; collapse
-    // to one line so the blockquote survives internal blank lines
-    return `\n> **Proof.** ${collapse(parseEnvDirectives(body).tex)}\n`
+    const md = texToMd(parseEnvDirectives(body).tex, ctx)
+    const quoted = md
+      .split("\n")
+      .map((l) => (l.trim() ? `> ${l}` : ">"))
+      .join("\n")
+    stashed.push(`> **Proof.**\n${quoted}`)
+    return `\n@@ORPHAN_PROOF_${stashed.length - 1}@@\n`
   })
-  return texToMd(s, ctx)
+  s = texToMd(s, ctx)
+  return s.replace(/@@ORPHAN_PROOF_(\d+)@@/g, (_, i) => stashed[Number(i)])
 }
 
 // ---------------------------------------------------------------- emit
@@ -252,8 +262,9 @@ export function buildNativeChapters(tex, opts = {}) {
         "",
       )
       if (kind !== it.kind) lines.push(`_Stated as a ${it.kind} in the original blueprint._`, "")
-      if (it.mathlibok)
-        lines.push("_Upstream marks this `\\mathlibok`: realized in mathlib itself._", "")
+      // \mathlibok is counted (stats) but not rendered per item — at
+      // real-blueprint scale (142 of brownian-motion's 620 items) the note is
+      // noise, and origin-aware extraction gives those items true statuses.
       const stmt = texToMd(it.tex, ctx)
       if (stmt) lines.push(stmt, "")
       if (it.proof) {
