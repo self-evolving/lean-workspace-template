@@ -29,6 +29,13 @@ kernel data, the importer can combine them directly:
 node scripts/import-blueprint.mjs --plan=path/to/plan --data=path/to/blueprint-data.json
 ```
 
+Multi-file LaTeX plans work as-is (`\input` chains resolve). Two flags cover
+the common leanblueprint layouts: `--macros=common.tex,web.tex` expands the
+project's custom `\newcommand`/`\DeclareMathOperator` shorthands so they
+don't reach the rendered statements raw, and `--chapter-level=section`
+serves blueprints built with plastex `split-level=1`, where `\section` is
+the chapter unit.
+
 ## Re-author as reference chapters (recommended)
 
 For a project you intend to keep working on, the durable path is to write
