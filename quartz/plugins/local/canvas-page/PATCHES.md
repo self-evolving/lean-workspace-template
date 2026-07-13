@@ -112,6 +112,8 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     and pinch events still update pan/zoom state synchronously, but commit the
     latest viewport transform and reset-control state at most once per animation
     frame. Identical transform/display writes are skipped; wheel geometry is read
-    once per frame, pinch geometry once per gesture, and all queued render/layout
-    frames are canceled during Quartz navigation cleanup. Initial fitting and
-    discrete controls remain synchronous.
+    once per frame (and invalidated immediately by sidebar/fullscreen geometry
+    changes), pinch geometry once per gesture (refreshed after touch-count changes
+    or cancellation), and all queued render/layout frames are canceled during
+    Quartz navigation cleanup. Initial fitting and discrete controls remain
+    synchronous.

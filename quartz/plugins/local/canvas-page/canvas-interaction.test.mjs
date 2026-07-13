@@ -93,6 +93,17 @@ class FakeElement extends FakeEventTarget {
     super();
     this.tagName = tag.toUpperCase();
     this.classes = new Set(classNames.split(/\s+/).filter(Boolean));
+    this.classList = {
+      contains: (token) => this.classes.has(token),
+      add: (...tokens) => tokens.forEach((token) => this.classes.add(token)),
+      remove: (...tokens) => tokens.forEach((token) => this.classes.delete(token)),
+      toggle: (token, force) => {
+        const enabled = force ?? !this.classes.has(token);
+        if (enabled) this.classes.add(token);
+        else this.classes.delete(token);
+        return enabled;
+      },
+    };
     this.dataset = {};
     this.children = [];
     this.parentElement = null;
@@ -101,6 +112,7 @@ class FakeElement extends FakeEventTarget {
     this.rect = rect ?? { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
     this.rectCalls = 0;
     this.pointerCaptures = [];
+    this.fullscreenRequests = 0;
     this.scrollHeight = 0;
     this.clientHeight = 0;
     this.scrollTop = 0;
@@ -148,18 +160,28 @@ class FakeElement extends FakeEventTarget {
   setPointerCapture(pointerId) {
     this.pointerCaptures.push(pointerId);
   }
+
+  requestFullscreen() {
+    this.fullscreenRequests++;
+  }
 }
 
 class FakeDocument extends FakeEventTarget {
-  constructor(container) {
+  constructor(root) {
     super();
-    this.container = container;
+    this.root = root;
     this.fullscreenElement = null;
+    this.exitFullscreenCalls = 0;
   }
 
   querySelectorAll(selector) {
-    if (this.container.matches(selector)) return [this.container];
-    return this.container.querySelectorAll(selector);
+    if (this.root.matches(selector)) return [this.root];
+    return this.root.querySelectorAll(selector);
+  }
+
+  exitFullscreen() {
+    this.exitFullscreenCalls++;
+    this.fullscreenElement = null;
   }
 }
 
@@ -202,6 +224,9 @@ function extractBaseCanvasScript() {
 }
 
 function createHarness({ minZoom = "0.1", maxZoom = "5" } = {}) {
+  const page = new FakeElement("page");
+  page.dataset.frame = "canvas";
+  const sidebarToggle = new FakeElement("canvas-sidebar-toggle", { tag: "button" });
   const container = new FakeElement("canvas-container", {
     rect: { left: 0, top: 0, width: 1000, height: 500, right: 1000, bottom: 500 },
   });
@@ -219,10 +244,21 @@ function createHarness({ minZoom = "0.1", maxZoom = "5" } = {}) {
     tag: "button",
     style: { display: "none" },
   });
-  controls.append(reset);
+  const zoomIn = new FakeElement("canvas-zoom-in", { tag: "button" });
+  const zoomOut = new FakeElement("canvas-zoom-out", { tag: "button" });
+  const fullscreen = new FakeElement("canvas-fullscreen-toggle", { tag: "button" });
+  const fullscreenEnter = new FakeElement("canvas-fullscreen-enter", {
+    style: { display: "" },
+  });
+  const fullscreenExit = new FakeElement("canvas-fullscreen-exit", {
+    style: { display: "none" },
+  });
+  fullscreen.append(fullscreenEnter, fullscreenExit);
+  controls.append(reset, zoomIn, zoomOut, fullscreen);
   container.append(controls, viewport);
+  page.append(sidebarToggle, container);
 
-  const document = new FakeDocument(container);
+  const document = new FakeDocument(page);
   const frames = new FakeAnimationFrames();
   const cleanupCallbacks = [];
   const window = {
@@ -252,6 +288,8 @@ function createHarness({ minZoom = "0.1", maxZoom = "5" } = {}) {
   const clearObservations = () => {
     viewport.styleTracker.clearWrites();
     reset.styleTracker.clearWrites();
+    fullscreenEnter.styleTracker.clearWrites();
+    fullscreenExit.styleTracker.clearWrites();
     container.rectCalls = 0;
     frames.requestCalls = 0;
     frames.cancelCalls = [];
@@ -260,7 +298,22 @@ function createHarness({ minZoom = "0.1", maxZoom = "5" } = {}) {
     for (const callback of cleanupCallbacks.splice(0)) callback();
   };
 
-  return { container, viewport, reset, document, frames, clearObservations, cleanup };
+  return {
+    page,
+    sidebarToggle,
+    container,
+    viewport,
+    reset,
+    zoomIn,
+    zoomOut,
+    fullscreen,
+    fullscreenEnter,
+    fullscreenExit,
+    document,
+    frames,
+    clearObservations,
+    cleanup,
+  };
 }
 
 function pointer(container, type, clientX, clientY) {
@@ -292,6 +345,34 @@ function applyWheel(state, { clientX, clientY, deltaY }, minZoom = 0.1, maxZoom 
   return {
     x: clientX - (clientX - state.x) * (zoom / state.zoom),
     y: clientY - (clientY - state.y) * (zoom / state.zoom),
+    zoom,
+  };
+}
+
+function touchMetrics(touches) {
+  const [first, second] = touches;
+  const dx = first.clientX - second.clientX;
+  const dy = first.clientY - second.clientY;
+  return {
+    distance: Math.sqrt(dx * dx + dy * dy),
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+  };
+}
+
+function applyPinch(state, previousTouches, nextTouches, rect, minZoom = 0.1, maxZoom = 5) {
+  const previous = touchMetrics(previousTouches);
+  const next = touchMetrics(nextTouches);
+  const zoom = Math.max(
+    minZoom,
+    Math.min(maxZoom, state.zoom * (next.distance / previous.distance)),
+  );
+  const ratio = zoom / state.zoom;
+  const localX = next.x - rect.left;
+  const localY = next.y - rect.top;
+  return {
+    x: localX - (localX - state.x) * ratio + (next.x - previous.x),
+    y: localY - (localY - state.y) * ratio + (next.y - previous.y),
     zoom,
   };
 }
@@ -403,6 +484,80 @@ test("wheel bypasses selection panels and independently scrollable node content"
   assert.deepEqual(reset.styleTracker.writesFor("display"), []);
 });
 
+test("sidebar geometry invalidates cached wheel bounds before its layout frame", () => {
+  const { page, sidebarToggle, container, frames, clearObservations } = createHarness();
+  clearObservations();
+
+  const firstWheel = container.dispatch("wheel", {
+    target: container,
+    clientX: 500,
+    clientY: 250,
+    deltaY: -1,
+  });
+  sidebarToggle.dispatch("click", { target: sidebarToggle });
+  container.rect = {
+    left: 200,
+    top: 0,
+    width: 800,
+    height: 500,
+    right: 1000,
+    bottom: 500,
+  };
+  const wheelBeforeLayoutFrame = container.dispatch("wheel", {
+    target: container,
+    clientX: 500,
+    clientY: 250,
+    deltaY: -1,
+  });
+
+  assert.equal(firstWheel.defaultPrevented, true);
+  assert.equal(wheelBeforeLayoutFrame.defaultPrevented, true);
+  assert.equal(page.classes.has("canvas-sidebar-open"), true);
+  assert.equal(
+    container.rectCalls,
+    3,
+    "wheel, sidebar snapshot, and post-toggle wheel each require their own bounds",
+  );
+  assert.equal(frames.pending, 2, "one render and one sidebar layout frame are queued");
+  frames.flush();
+});
+
+test("fullscreen geometry invalidates cached wheel bounds before its layout frame", () => {
+  const { container, document, fullscreenEnter, fullscreenExit, frames, clearObservations } =
+    createHarness();
+  clearObservations();
+
+  container.dispatch("wheel", {
+    target: container,
+    clientX: 500,
+    clientY: 250,
+    deltaY: -1,
+  });
+  container.rect = {
+    left: 40,
+    top: 20,
+    width: 1200,
+    height: 700,
+    right: 1240,
+    bottom: 720,
+  };
+  document.fullscreenElement = container;
+  document.dispatch("fullscreenchange", { target: document });
+  const wheelBeforeLayoutFrame = container.dispatch("wheel", {
+    target: container,
+    clientX: 600,
+    clientY: 350,
+    deltaY: 1,
+  });
+
+  assert.equal(wheelBeforeLayoutFrame.defaultPrevented, true);
+  assert.equal(container.rectCalls, 2, "the pre-layout wheel must read the fullscreen bounds");
+  assert.deepEqual(fullscreenEnter.styleTracker.writesFor("display"), ["none"]);
+  assert.deepEqual(fullscreenExit.styleTracker.writesFor("display"), [""]);
+  assert.equal(frames.pending, 2, "one render and one fullscreen layout frame are queued");
+  frames.flush();
+});
+
 test("a zoom clamped to the current transform does not write it again", () => {
   const { container, viewport, reset, frames, clearObservations } = createHarness({
     maxZoom: "0.45",
@@ -421,38 +576,90 @@ test("a zoom clamped to the current transform does not write it again", () => {
   assert.deepEqual(reset.styleTracker.writesFor("display"), []);
 });
 
+test("zoom and Reset controls apply synchronously without scheduling a render frame", () => {
+  const { viewport, reset, zoomIn, zoomOut, frames, clearObservations } = createHarness();
+  clearObservations();
+
+  zoomIn.dispatch("click", { target: zoomIn });
+  assert.equal(frames.pending, 0);
+  let writes = viewport.styleTracker.writesFor("transform");
+  assert.equal(writes.length, 1);
+  let transform = parseTransform(writes[0]);
+  assertClose(transform.x, -62.5, "zoom-in x");
+  assertClose(transform.y, -31.25, "zoom-in y");
+  assertClose(transform.zoom, 0.5625, "zoom-in scale");
+
+  zoomOut.dispatch("click", { target: zoomOut });
+  assert.equal(frames.pending, 0);
+  writes = viewport.styleTracker.writesFor("transform");
+  assert.equal(writes.length, 2);
+  transform = parseTransform(writes[1]);
+  assertClose(transform.x, 50, "zoom-out x");
+  assertClose(transform.y, 25, "zoom-out y");
+  assertClose(transform.zoom, 0.45, "zoom-out scale");
+
+  zoomIn.dispatch("click", { target: zoomIn });
+  assert.equal(frames.pending, 0);
+  reset.dispatch("click", { target: reset });
+  assert.equal(frames.pending, 0);
+  writes = viewport.styleTracker.writesFor("transform");
+  assert.equal(writes.length, 4);
+  transform = parseTransform(writes[3]);
+  assertClose(transform.x, 50, "Reset x");
+  assertClose(transform.y, 25, "Reset y");
+  assertClose(transform.zoom, 0.45, "Reset scale");
+  assert.deepEqual(reset.styleTracker.writesFor("display"), ["flex", "none", "flex", "none"]);
+});
+
 test("pinch bursts reuse their rect and commit only the latest transform", () => {
   const { container, viewport, frames, clearObservations } = createHarness();
   clearObservations();
 
-  container.dispatch("touchstart", {
+  const startTouches = [
+    { clientX: 100, clientY: 100 },
+    { clientX: 200, clientY: 100 },
+  ];
+  const firstMoveTouches = [
+    { clientX: 90, clientY: 90 },
+    { clientX: 220, clientY: 110 },
+  ];
+  const secondMoveTouches = [
+    { clientX: 80, clientY: 70 },
+    { clientX: 250, clientY: 140 },
+  ];
+  const start = container.dispatch("touchstart", {
     target: container,
-    touches: [
-      { clientX: 100, clientY: 100 },
-      { clientX: 200, clientY: 100 },
-    ],
+    touches: startTouches,
   });
-  container.dispatch("touchmove", {
+  const firstMove = container.dispatch("touchmove", {
     target: container,
-    touches: [
-      { clientX: 90, clientY: 90 },
-      { clientX: 210, clientY: 110 },
-    ],
+    touches: firstMoveTouches,
   });
-  container.dispatch("touchmove", {
+  const secondMove = container.dispatch("touchmove", {
     target: container,
-    touches: [
-      { clientX: 80, clientY: 80 },
-      { clientX: 220, clientY: 120 },
-    ],
+    touches: secondMoveTouches,
   });
 
+  assert.equal(start.defaultPrevented, true);
+  assert.equal(firstMove.defaultPrevented, true);
+  assert.equal(secondMove.defaultPrevented, true);
   assert.equal(container.rectCalls, 1);
   assert.equal(frames.pending, 1);
   assert.equal(frames.requestCalls, 1);
   assert.deepEqual(viewport.styleTracker.writesFor("transform"), []);
   frames.flush();
-  assert.equal(viewport.styleTracker.writesFor("transform").length, 1);
+  const writes = viewport.styleTracker.writesFor("transform");
+  assert.equal(writes.length, 1);
+  const expected = applyPinch(
+    applyPinch({ x: 50, y: 25, zoom: 0.45 }, startTouches, firstMoveTouches, container.rect),
+    firstMoveTouches,
+    secondMoveTouches,
+    container.rect,
+  );
+  const actual = parseTransform(writes[0]);
+  assertClose(actual.x, expected.x, "accumulated pinch x");
+  assertClose(actual.y, expected.y, "accumulated pinch y");
+  assertClose(actual.zoom, expected.zoom, "accumulated pinch zoom");
 });
 
 test("a zero-distance pinch cannot poison later transforms", () => {
@@ -588,6 +795,57 @@ test("reset control display changes only when its visibility changes", () => {
   reset.dispatch("click", { target: reset });
   frames.flush();
   assert.deepEqual(reset.styleTracker.writesFor("display"), ["flex", "none"]);
+});
+
+test("cleanup cancels queued sidebar and fullscreen layout frames without later writes", () => {
+  const {
+    sidebarToggle,
+    container,
+    viewport,
+    reset,
+    fullscreen,
+    fullscreenEnter,
+    fullscreenExit,
+    document,
+    frames,
+    clearObservations,
+    cleanup,
+  } = createHarness();
+  clearObservations();
+
+  sidebarToggle.dispatch("click", { target: sidebarToggle });
+  container.rect = {
+    left: 180,
+    top: 10,
+    width: 820,
+    height: 490,
+    right: 1000,
+    bottom: 500,
+  };
+  document.fullscreenElement = container;
+  document.dispatch("fullscreenchange", { target: document });
+  assert.equal(frames.pending, 2);
+
+  const writesBeforeCleanup = {
+    transform: viewport.styleTracker.writesFor("transform"),
+    reset: reset.styleTracker.writesFor("display"),
+    enter: fullscreenEnter.styleTracker.writesFor("display"),
+    exit: fullscreenExit.styleTracker.writesFor("display"),
+  };
+  const rectCallsBeforeCleanup = container.rectCalls;
+  cleanup();
+
+  assert.equal(frames.pending, 0);
+  assert.equal(frames.cancelCalls.length, 2);
+  assert.equal(frames.flush(), 0);
+  assert.deepEqual(viewport.styleTracker.writesFor("transform"), writesBeforeCleanup.transform);
+  assert.deepEqual(reset.styleTracker.writesFor("display"), writesBeforeCleanup.reset);
+  assert.deepEqual(fullscreenEnter.styleTracker.writesFor("display"), writesBeforeCleanup.enter);
+  assert.deepEqual(fullscreenExit.styleTracker.writesFor("display"), writesBeforeCleanup.exit);
+  assert.equal(container.rectCalls, rectCallsBeforeCleanup);
+  assert.equal(sidebarToggle.listenerCount("click"), 0);
+  assert.equal(fullscreen.listenerCount("click"), 0);
+  assert.equal(document.listenerCount("fullscreenchange"), 0);
 });
 
 test("cleanup cancels a pending frame and removes interaction listeners", () => {
