@@ -1,0 +1,315 @@
+#!/usr/bin/env node
+// Native-chapter migration: converts a leanblueprint LaTeX plan into NATIVE
+// Lean Workspace chapters — markdown items carrying lean=/uses= that fully
+// participate in the kernel-truth pipeline (statuses, edges, and snippets are
+// recomputed on every `npm run blueprint:sync`). This is the durable
+// counterpart to scripts/import-blueprint.mjs, whose output is a pre-rendered
+// snapshot.
+//
+// Usage:
+//   node scripts/migrate-blueprint.mjs --plan=path/to/content.tex \
+//        --label="My Project blueprint" [--macros=common.tex,web.tex] \
+//        [--chapter-level=chapter|section] [--out=blueprint] [--dry-run]
+//
+// \input chains resolve recursively; --macros expands the project's custom
+// \newcommand/\DeclareMathOperator shorthands; --chapter-level=section serves
+// blueprints built with plastex split-level=1. The migration deliberately does
+// NOT touch lakefile.toml, lean-toolchain, blueprint.config.json, or the
+// folder's index.md — it prints the follow-up checklist instead (the docs walk
+// it: docs/tutorial/quick-start/work-on-external-project.md).
+
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
+import {
+  PLAN_ENV_KINDS,
+  collapse,
+  expandMacros,
+  parseEnvDirectives,
+  parseMacroFiles,
+  parsePlanTex,
+  resolveInputs,
+  stripTexComments,
+  yamlScalar,
+} from "./lib/tex-plan.mjs"
+
+// Upstream environments without a native item kind are kept as items under the
+// closest kind, with a provenance line in the body.
+const MAPPED_KINDS = { remark: "definition", example: "definition" }
+
+// ---------------------------------------------------------------- tex -> markdown
+const DISPLAY_ENVS = ["equation", "align", "alignat", "gather", "multline", "eqnarray"]
+
+function texToMd(tex, ctx) {
+  if (!tex) return ""
+  let s = tex
+  // display math: \[..\] and top-level AMS environments -> $$..$$ (normalized
+  // to the starred forms — KaTeX numbers nothing here anyway)
+  s = s.replace(/\\\[([\s\S]*?)\\\]/g, (_, b) => `\n$$\n${b.trim()}\n$$\n`)
+  for (const env of DISPLAY_ENVS) {
+    const re = new RegExp(`\\\\begin\\{${env}(\\*?)\\}([\\s\\S]*?)\\\\end\\{${env}\\1\\}`, "g")
+    s = s.replace(re, (_, star, body) => {
+      const name = `${env === "eqnarray" ? "align" : env}${star || "*"}`
+      return `\n$$\n\\begin{${name}}${body}\\end{${name}}\n$$\n`
+    })
+  }
+  // lists
+  s = s.replace(/\\begin\{(itemize|enumerate)\}([\s\S]*?)\\end\{\1\}/g, (_, envName, body) => {
+    const marker = envName === "enumerate" ? "1." : "-"
+    const entries = body
+      .split(/\\item\b/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+    return "\n" + entries.map((x) => `${marker} ${collapse(x)}`).join("\n") + "\n"
+  })
+  // refs -> links to item labels where possible (native cross-ref syntax is
+  // [text](#label)); unknown labels degrade to plain text
+  const refText = (l) => {
+    const t = ctx.itemByLabel.get(l.trim())
+    return t ? `[${t.displayName}](#${l.trim()})` : null
+  }
+  s = s.replace(/\\[Cc]ref\{([^}]*)\}/g, (_, l) => refText(l) ?? collapse(l))
+  s = s.replace(
+    /(Definition|Lemma|Theorem|Proposition|Corollary|Remark)~?\\ref\{([^}]*)\}/g,
+    (_, kind, l) => refText(l) ?? `${kind} ${collapse(l)}`,
+  )
+  s = s.replace(/\\(?:eq)?ref\{([^}]*)\}/g, (_, l) => refText(l) ?? `(${collapse(l)})`)
+  // inline formatting
+  s = s
+    .replace(/\\texttt\{([^}]*)\}/g, "`$1`")
+    .replace(/\\verb\|([^|]*)\|/g, "`$1`")
+    .replace(/\\emph\{([^}]*)\}/g, "_$1_")
+    .replace(/\\textit\{([^}]*)\}/g, "_$1_")
+    .replace(/\\textbf\{([^}]*)\}/g, "**$1**")
+    .replace(/\\footnote\{([^}]*)\}/g, " ($1)")
+    .replace(/\\cite(?:\[([^\]]*)\])?\{([^}]*)\}/g, (_, note, keys) =>
+      note ? `[${keys}, ${note}]` : `[${keys}]`,
+    )
+  // leftover structure/marker commands
+  s = s
+    .replace(/\\label\{[^}]*\}/g, "")
+    .replace(
+      /\\(?:mathlibok|notready|leanok|noindent|centering|medskip|smallskip|bigskip|newpage|clearpage)\b/g,
+      "",
+    )
+    .replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}/g, "_(figure: $1)_")
+  // ~ is a non-breaking space (KaTeX renders it as a space inside math too)
+  s = s.replace(/(?<!\\)~/g, " ")
+  return s.replace(/\n{3,}/g, "\n\n").trim()
+}
+
+// Sub-chapter headers inside gap prose become bold paragraphs (## is reserved
+// for items in native chapters); orphan proof environments — ones that did not
+// immediately follow an item — are kept as quoted prose.
+function proseToMd(tex, ctx, chapterCmd, stats) {
+  let s = tex
+  if (chapterCmd === "chapter")
+    s = s.replace(/\\section\*?\{([^}]*)\}/g, (_, t) => `\n**${collapse(t)}**\n`)
+  s = s.replace(/\\(?:sub)+section\*?\{([^}]*)\}/g, (_, t) => `\n**${collapse(t)}**\n`)
+  s = s.replace(/\\begin\{proof\}([\s\S]*?)\\end\{proof\}/g, (_, body) => {
+    stats.orphanProofs++
+    // strip \uses{}/\leanok directives so they don't leak into prose; collapse
+    // to one line so the blockquote survives internal blank lines
+    return `\n> **Proof.** ${collapse(parseEnvDirectives(body).tex)}\n`
+  })
+  return texToMd(s, ctx)
+}
+
+// ---------------------------------------------------------------- emit
+const slugify = (s) =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\$[^$]*\$/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "chapter"
+
+const KIND_PREFIX_RE =
+  /^(def|defn|definition|lem|lemma|thm|theorem|prop|proposition|cor|corollary|rem|remark|eg|ex|example)[:.]/i
+const displayNameOf = (label) => label.replace(KIND_PREFIX_RE, "").trim() || label
+
+// Convert a parsed plan (see tex-plan.mjs parsePlanTex) into native chapter
+// files plus the folder _meta.json. Pure: no fs, no flags — the CLI below and
+// the tests both call this.
+export function buildNativeChapters(tex, opts = {}) {
+  const chapterCmd = opts.chapterCmd ?? "chapter"
+  const label = opts.label ?? "Blueprint"
+  const macros = opts.macros ?? new Map()
+  const src = expandMacros(stripTexComments(tex), macros)
+  const { chapters, parts } = parsePlanTex(src, {
+    chapterCmd,
+    kinds: [...PLAN_ENV_KINDS, ...Object.keys(MAPPED_KINDS)],
+  })
+
+  const stats = { items: 0, withLean: 0, mathlibok: 0, droppedUses: 0, orphanProofs: 0 }
+  const warnings = []
+
+  const itemByLabel = new Map()
+  const allItems = chapters.flatMap((c) => c.items)
+  for (const it of allItems) {
+    if (!it.label) continue
+    it.displayName = it.caption || displayNameOf(it.label)
+    if (itemByLabel.has(it.label)) warnings.push(`duplicate label ${it.label}`)
+    itemByLabel.set(it.label, it)
+  }
+  const ctx = { itemByLabel }
+
+  // uses= hygiene: a reference to a label that is not an item would fail the
+  // build's cross-reference validation — drop it and say so
+  const filterUses = (uses, where) =>
+    uses.filter((l) => {
+      if (itemByLabel.has(l)) return true
+      stats.droppedUses++
+      warnings.push(`${where}: uses=${l} is not an item label — dropped`)
+      return false
+    })
+
+  // chapter titles may carry \ref{} ("Proof of Theorem \ref{thm:G}") — resolve
+  // to the target's display name as plain text
+  const cleanTitle = (t) =>
+    collapse(
+      t.replace(/\\[Cc]?(?:eq)?ref\{([^}]*)\}/g, (_, l) => {
+        const target = itemByLabel.get(l.trim())
+        return target ? target.displayName : displayNameOf(l.trim())
+      }),
+    )
+
+  const files = []
+  const chapterSlugs = []
+  const width = String(chapters.length).length
+  chapters.forEach((ch, idx) => {
+    const title = cleanTitle(ch.title)
+    const slug = `${String(idx + 1).padStart(width, "0")}-${slugify(title)}`
+    chapterSlugs.push(slug)
+    const lines = [
+      "---",
+      `title: ${yamlScalar(title)}`,
+      `type: "blueprint-chapter"`,
+      "tags:",
+      `  - "blueprint"`,
+      "---",
+      "",
+    ]
+    for (const b of ch.blocks) {
+      if (b.type === "prose") {
+        const md = proseToMd(b.tex, ctx, chapterCmd, stats)
+        if (md) lines.push(md, "")
+        continue
+      }
+      const it = b.item
+      if (!it.label) {
+        // unlabeled environment: nothing can reference it — keep as quoted prose
+        const md = texToMd(it.tex, ctx)
+        if (md) lines.push(`> **${it.kind}.** ${md}`, "")
+        continue
+      }
+      stats.items++
+      if (it.leanNames.length) stats.withLean++
+      if (it.mathlibok) stats.mathlibok++
+      const kind = MAPPED_KINDS[it.kind] ?? it.kind
+      const attrs = [`#${it.label}`]
+      if (it.leanNames.length) attrs.push(`lean="${it.leanNames.join(", ")}"`)
+      const uses = filterUses(it.uses, it.label)
+      if (uses.length) attrs.push(`uses="${uses.join(", ")}"`)
+      lines.push(
+        `## ${kind[0].toUpperCase() + kind.slice(1)}: ${it.displayName} {${attrs.join(" ")}}`,
+        "",
+      )
+      if (kind !== it.kind) lines.push(`_Stated as a ${it.kind} in the original blueprint._`, "")
+      if (it.mathlibok)
+        lines.push("_Upstream marks this `\\mathlibok`: realized in mathlib itself._", "")
+      const stmt = texToMd(it.tex, ctx)
+      if (stmt) lines.push(stmt, "")
+      if (it.proof) {
+        const pUses = filterUses(it.proof.uses, `${it.label} proof`)
+        const pBody = texToMd(it.proof.tex, ctx)
+        if (pBody || pUses.length) {
+          lines.push(`### Proof${pUses.length ? ` {uses="${pUses.join(", ")}"}` : ""}`, "")
+          if (pBody) lines.push(pBody, "")
+        }
+      }
+    }
+    files.push({ name: `${slug}.md`, content: lines.join("\n").replace(/\n{3,}/g, "\n\n") + "\n" })
+  })
+
+  // No dep-graph entry yet: the canvas file does not exist until the first
+  // `lake build && npm run blueprint:sync`, and nav validation fails on a
+  // dangling entry. The CLI checklist says to add it after that first sync.
+  const meta = { label, pages: chapterSlugs }
+  return { files, meta, parts, stats, warnings }
+}
+
+// ---------------------------------------------------------------- cli
+const argv = process.argv.slice(2)
+const argOf = (name, fallback) => {
+  const p = argv.find((a) => a.startsWith(`--${name}=`))
+  return p ? p.slice(name.length + 3) : fallback
+}
+
+function main() {
+  const PLAN = argOf("plan", "")
+  const LABEL = argOf("label", "")
+  if (!PLAN || !LABEL) {
+    console.error(
+      'migrate-blueprint: --plan=<content.tex> and --label="Project blueprint" are required',
+    )
+    process.exit(1)
+  }
+  const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+  const contentRoot = (() => {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, "blueprint.config.json"), "utf8"))
+      return cfg.contentRoot ?? "content"
+    } catch {
+      return "content"
+    }
+  })()
+  const outDir = path.resolve(ROOT, contentRoot, argOf("out", "blueprint"))
+  const macroFiles = argOf("macros", "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((f) => path.resolve(ROOT, f))
+
+  const tex = resolveInputs(path.resolve(ROOT, PLAN))
+  const { files, meta, parts, stats, warnings } = buildNativeChapters(tex, {
+    chapterCmd: argOf("chapter-level", "chapter"),
+    label: LABEL,
+    macros: parseMacroFiles(macroFiles),
+  })
+
+  for (const w of warnings) console.warn(`migrate: ${w}`)
+  console.log(
+    `migrate: ${files.length} chapters, ${stats.items} items (${stats.withLean} with lean=, ` +
+      `${stats.mathlibok} mathlibok), ${stats.droppedUses} non-item uses refs dropped, ` +
+      `${stats.orphanProofs} orphan proofs kept as prose`,
+  )
+  if (parts.length) console.log(`migrate: parts: ${parts.map((p) => p.title).join(" | ")}`)
+
+  if (argv.includes("--dry-run")) {
+    console.log(files.map((f) => f.name).join("\n"))
+    return
+  }
+  fs.mkdirSync(outDir, { recursive: true })
+  for (const f of files) fs.writeFileSync(path.join(outDir, f.name), f.content)
+  fs.writeFileSync(path.join(outDir, "_meta.json"), JSON.stringify(meta, null, 2) + "\n")
+  console.log(`migrate: wrote ${files.length} chapter files + _meta.json to ${outDir}`)
+  console.log(
+    [
+      "",
+      "Not done for you (see docs/tutorial/quick-start/work-on-external-project.md):",
+      "  - adopt the Lean code ([[require]] or copy-in, lean-toolchain, lake update)",
+      "  - point blueprint.config.json lakeRoots/leanSrcDirs/repo at it",
+      "  - remove the demo chapters + stale lakefile roots if this replaced the demo",
+      `  - rewrite ${path.join(contentRoot, argOf("out", "blueprint"), "index.md")} (landing page + attribution)`,
+      "  - after the first `lake build && npm run blueprint:sync` creates the canvas,",
+      '    add { "page": "dep-graph", "type": "canvas", "title": "Dependency canvas" }',
+      "    back to the top of _meta.json pages",
+      "  - items realized outside your lakeRoots (e.g. \\mathlibok, upstreamed to",
+      "    mathlib) render without kernel statuses for now",
+    ].join("\n"),
+  )
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

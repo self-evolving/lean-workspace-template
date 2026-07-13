@@ -26,7 +26,8 @@
     "import:blueprint": "node scripts/import-blueprint.mjs",
     "blueprint:canvas": "node scripts/generate-canvas.mjs",
     "blueprint:data": "node scripts/blueprint-data.mjs",
-    "blueprint:sync": "npm run blueprint:data && npm run blueprint:canvas"
+    "blueprint:sync": "npm run blueprint:data && npm run blueprint:canvas",
+    "migrate:blueprint": "node scripts/migrate-blueprint.mjs"
   },
   "engines": {
     "npm": ">=10.9.2",
