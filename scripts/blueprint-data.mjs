@@ -26,7 +26,39 @@ if (!cfg.lakeRoots?.length) {
 }
 
 const out = path.relative(ROOT, cfg.dataPath)
+
+// Chapters may reference declarations that live OUTSIDE the lakeRoots walk —
+// theory upstreamed to mathlib (leanblueprint's \mathlibok) or code in a
+// dependency package. Collect every lean="..." name from the blueprint's
+// markdown chapters and hand the list to the extractor, which resolves them
+// from the compiled environment regardless of their module of origin.
+const extraDeclNames = (() => {
+  const dir = path.dirname(cfg.dataPath)
+  const names = new Set()
+  let files = []
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith(".md"))
+  } catch {
+    return []
+  }
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(dir, f), "utf8")
+    for (const m of src.matchAll(/\blean=(?:"([^"]*)"|([^\s"}]+))/g)) {
+      const v = m[1] ?? m[2]
+      if (v === "next") continue // literate binding — the decl is in lakeRoots
+      for (const n of v.split(",").map((s) => s.trim()).filter(Boolean)) names.add(n)
+    }
+  }
+  return [...names].sort()
+})()
+
 const args = ["exe", "blueprint-data", out, ...cfg.lakeRoots]
+if (extraDeclNames.length) {
+  const listPath = path.join(ROOT, ".quartz-cache", "blueprint-extra-decls.txt")
+  fs.mkdirSync(path.dirname(listPath), { recursive: true })
+  fs.writeFileSync(listPath, extraDeclNames.join("\n") + "\n")
+  args.push(`--decls=${path.relative(ROOT, listPath)}`)
+}
 console.log(`> lake ${args.join(" ")}`)
 
 // Whether the lakefile actually requires mathlib (comment lines don't count:

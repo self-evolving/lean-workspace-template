@@ -15,10 +15,18 @@ The blueprint model (`scripts/lib/blueprint-model.mjs`) merges this with the
 chapter sources in `content/blueprint/` so node statuses on the dependency
 canvas are computed, not hand-declared.
 
-Usage: `lake exe blueprint-data [outPath] <rootModule> [rootModule...]`
+Usage: `lake exe blueprint-data [outPath] <rootModule> [rootModule...] [--decls=<file>]`
 Default outPath: `content/blueprint/blueprint-data.json`. Root modules are
 required — pass the values from `blueprint.config.json` `lakeRoots` (CI does
 this automatically).
+
+`--decls=<file>` names extra declarations (one per line) to resolve from the
+compiled environment even though they live outside the root modules — chapters
+routinely reference theory upstreamed to mathlib (leanblueprint's `\mathlibok`)
+or code in a dependency package, and those items would otherwise never receive
+a kernel status. `scripts/blueprint-data.mjs` collects the chapters' `lean=`
+names into this file automatically. Entries resolved this way carry
+`"origin": "external"`.
 -/
 
 open Lean
@@ -96,17 +104,24 @@ def usedConstantsOf (ci : ConstantInfo) : Array Name :=
   | some v => fromType ++ v.getUsedConstants
   | none => fromType
 
-/-- Collapse raw used constants onto deduped public project declarations. -/
-def projectUses (env : Environment) (roots : List Name) (self : Name)
+/-- Collapse raw used constants onto deduped public project declarations.
+Names in `extra` (chapter-referenced declarations living outside the root
+modules, e.g. in mathlib) count as targets too — as themselves, without
+ancestor collapsing — so edges between blueprint items survive even when one
+endpoint was upstreamed. -/
+def projectUses (env : Environment) (roots : List Name) (extra : NameSet) (self : Name)
     (used : Array Name) : Array String := Id.run do
   let mut out : Array String := #[]
   for u in used do
-    if u != self && isInProjectModule env roots u then
-      match publicAncestor env roots u with
-      | some p =>
-        if p != self && !out.contains p.toString then
-          out := out.push p.toString
-      | none => pure ()
+    if u != self then
+      if isInProjectModule env roots u then
+        match publicAncestor env roots u with
+        | some p =>
+          if p != self && !out.contains p.toString then
+            out := out.push p.toString
+        | none => pure ()
+      else if extra.contains u && !out.contains u.toString then
+        out := out.push u.toString
   return out
 
 /-- Transitive axiom collection by BFS over used constants (what `#print axioms`
@@ -131,7 +146,13 @@ partial def collectAxiomsFrom (env : Environment) (start : Name) : NameSet := Id
     | none => pure ()
   return axioms
 
-def main (args : List String) : IO Unit := do
+def main (rawArgs : List String) : IO Unit := do
+  let (flags, args) := rawArgs.partition (·.startsWith "--")
+  let declsFile? := flags.filterMap (fun f =>
+    if f.startsWith "--decls=" then some ((f.drop "--decls=".length).toString) else none) |>.head?
+  for f in flags do
+    if !f.startsWith "--decls=" then
+      throw <| IO.userError s!"blueprint-data: unknown flag `{f}` (known: --decls=<file>)"
   let outPathStr : String := args[0]?.getD "content/blueprint/blueprint-data.json"
   -- catch the classic mistake of passing a module name first: the output path
   -- comes first, then the root modules
@@ -150,6 +171,15 @@ def main (args : List String) : IO Unit := do
       "blueprint-data: no root modules given — pass them as arguments, e.g. \
        `lake exe blueprint-data content/blueprint/blueprint-data.json Ch01_SumsOfOddNumbers` \
        (or just run `npm run blueprint:data`, which reads blueprint.config.json)"
+  -- extra chapter-referenced declarations to resolve beyond the root modules
+  let extraNames : List Name ← match declsFile? with
+    | none => pure []
+    | some f => do
+      let contents ← IO.FS.readFile f
+      pure <| contents.splitOn "\n" |>.map (fun l => l.trimAscii.toString) |>.filter (· ≠ "")
+        |>.map String.toName
+  let extraSet : NameSet := extraNames.foldl (·.insert ·) {}
+
   initSearchPath (← findSysroot)
   -- importAll: load full (non-exported) environments so theorem proof terms are
   -- available — otherwise dependency edges and sorry/axiom detection see only types.
@@ -162,12 +192,22 @@ def main (args : List String) : IO Unit := do
       names := names.push (n, ci)
   let sorted := names.qsort (fun a b => a.1.toString < b.1.toString)
 
-  for (n, ci) in sorted do
+  -- external names come after the project walk, deduped against it, in a
+  -- deterministic order; unresolvable ones are reported, not fatal
+  let emitted : NameSet := sorted.foldl (fun s (n, _) => s.insert n) {}
+  let externals := (extraNames.filter (!emitted.contains ·)).eraseDups
+    |>.toArray.qsort (fun a b => a.toString < b.toString)
+  let mut missing : Array Name := #[]
+
+  let total := sorted.size + externals.size
+  let mut analyzed := 0
+
+  let emitDecl (n : Name) (ci : ConstantInfo) (external : Bool) : Json := Id.run do
     -- statement-level vs proof-level dependencies (type vs value constants);
     -- consumers infer dashed (statement) / solid (proof) edges from the split
-    let typeUses := projectUses env roots n ci.type.getUsedConstants
+    let typeUses := projectUses env roots extraSet n ci.type.getUsedConstants
     let valueUses := match valueOf? ci with
-      | some v => projectUses env roots n v.getUsedConstants
+      | some v => projectUses env roots extraSet n v.getUsedConstants
       | none => #[]
     let projUses := typeUses ++ valueUses.filter (!typeUses.contains ·)
     let axioms := collectAxiomsFrom env n
@@ -180,7 +220,8 @@ def main (args : List String) : IO Unit := do
           ("endLine", Json.num dr.range.endPos.line)]
       | some file, none => [("file", Json.str file)]
       | _, _ => []
-    decls := decls.push <| Json.mkObj ([
+    let originFields := if external then [("origin", Json.str "external")] else []
+    return Json.mkObj ([
       ("name", Json.str n.toString),
       ("kind", Json.str (kindOf ci)),
       ("usedConstants", toJson projUses),
@@ -188,7 +229,26 @@ def main (args : List String) : IO Unit := do
       ("valueUses", toJson valueUses),
       ("axioms", toJson axiomNames),
       ("hasSorry", Json.bool (axioms.contains ``sorryAx))
-    ] ++ locFields)
+    ] ++ locFields ++ originFields)
+
+  for (n, ci) in sorted do
+    decls := decls.push (emitDecl n ci false)
+    analyzed := analyzed + 1
+    if analyzed % 200 == 0 then
+      IO.eprintln s!"blueprint-data: analyzed {analyzed}/{total} declarations"
+
+  for n in externals do
+    match env.find? n with
+    | some ci => decls := decls.push (emitDecl n ci true)
+    | none => missing := missing.push n
+    analyzed := analyzed + 1
+    if analyzed % 200 == 0 then
+      IO.eprintln s!"blueprint-data: analyzed {analyzed}/{total} declarations"
+
+  if missing.size > 0 then
+    IO.eprintln s!"blueprint-data: {missing.size} chapter-referenced declaration(s) not found in the environment (not imported by the root modules?):"
+    for n in missing do
+      IO.eprintln s!"  - {n}"
 
   let out := Json.mkObj [
     ("rootModules", toJson (roots.map toString)),
