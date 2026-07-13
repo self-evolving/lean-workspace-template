@@ -45,9 +45,11 @@ node scripts/import-blueprint.mjs --plan=path/to/plan --data=path/to/blueprint-d
 ```
 
 `--out` and `--label` work here too. Omitting `--data` is allowed and makes
-this a status-less trial conversion: every `\lean{}` reference reports "not
-found" and renders without a status. Like the scrape, the output is
-generated snapshot pages — the durable path is the next section.
+this a trial conversion with no kernel truth behind it: every `\lean{}`
+reference reports "not found", and the readiness statuses on the generated
+pages are placeholders computed from an empty kernel map. Like the scrape,
+the output is generated snapshot pages — the durable path is the next
+section.
 
 ## Re-author as reference chapters (recommended)
 
