@@ -127,14 +127,17 @@ export function itemHeadingTitle(item) {
   return title || meta
 }
 
-function chapterHref(fromSlug, toItem, root) {
+export function chapterHref(fromSlug, toItem, root) {
   // same-page refs use the bare anchor; cross-chapter refs use a relative path
   // (chapters may sit in per-part subfolders, so sibling-name links are not
   // enough). anchors are github-slugged so they survive crawl-links/rehype-slug.
   const anchor = anchorOf(toItem.label)
   const target = `${root}/${toItem.chapter.slug}`
   if (fromSlug === target) return `#${anchor}`
-  const fromParts = fromSlug.split("/").slice(0, -1)
+  // links resolve relative to the page's containing folder — which for the
+  // blueprint index (a folder-index page, slug === root) is the folder itself,
+  // not its parent
+  const fromParts = fromSlug === root ? fromSlug.split("/") : fromSlug.split("/").slice(0, -1)
   const targetParts = target.split("/")
   let common = 0
   while (

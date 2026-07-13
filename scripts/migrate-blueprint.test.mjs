@@ -173,3 +173,22 @@ test("--part-folders without \\part headings warns and stays flat", () => {
   assert.deepEqual(partMetas, [])
   assert.ok(warnings.some((w) => w.includes("no \\part{}")))
 })
+
+test("--part-folders: chapterless parts are skipped with a warning", () => {
+  const src =
+    "\\part{Empty}\\part{Full}\\chapter{Alpha}\\begin{definition}\\label{a}\nA.\n\\end{definition}"
+  const { files, meta, partMetas, warnings } = buildNativeChapters(src, {
+    label: "L",
+    partFolders: true,
+  })
+  assert.deepEqual(
+    files.map((f) => f.dir),
+    ["2-full"],
+  )
+  assert.deepEqual(meta.pages, ["2-full"])
+  assert.deepEqual(
+    partMetas.map((pm) => pm.dir),
+    ["2-full"],
+  )
+  assert.ok(warnings.some((w) => w.includes('"Empty" has no chapters')))
+})

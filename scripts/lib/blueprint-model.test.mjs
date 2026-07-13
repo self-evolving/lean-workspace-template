@@ -16,6 +16,7 @@ import {
 } from "./blueprint-model.mjs"
 import { weaveLeanToMd } from "./lean-weave.mjs"
 import {
+  chapterHref,
   firstLeanDeclName,
   itemDeclForCode,
   itemDisplayTitle,
@@ -288,4 +289,17 @@ test("buildSourceModel: part folders recurse one level with global numbering", (
   // cross-folder reference target resolves through the shared label index
   assert.ok(model.itemByLabel.has("def:a"))
   assert.equal(model.itemByLabel.get("lem:b").chapter.slug, "1-part-one/02-inner")
+})
+
+test("chapterHref: folder-index root page and cross-folder chapters resolve correctly", () => {
+  const flat = { label: "x", chapter: { slug: "01-alpha" } }
+  const foldered = { label: "y", chapter: { slug: "1-part/02-beta" } }
+  // from the blueprint index (folder-index page: links resolve inside the folder)
+  assert.equal(chapterHref("blueprint", flat, "blueprint"), "01-alpha.md#x")
+  assert.equal(chapterHref("blueprint", foldered, "blueprint"), "1-part/02-beta.md#y")
+  // from a root-level chapter into a part folder and back
+  assert.equal(chapterHref("blueprint/01-alpha", foldered, "blueprint"), "1-part/02-beta.md#y")
+  assert.equal(chapterHref("blueprint/1-part/02-beta", flat, "blueprint"), "../01-alpha.md#x")
+  // same page
+  assert.equal(chapterHref("blueprint/01-alpha", flat, "blueprint"), "#x")
 })

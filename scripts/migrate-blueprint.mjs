@@ -328,17 +328,27 @@ export function buildNativeChapters(tex, opts = {}) {
   // dangling entry. The CLI checklist says to add it after that first sync.
   // With part folders, the root nav lists the folders (plus any pre-part
   // root chapters); each folder's _meta.json labels the part.
+  // chapterless parts (e.g. a \part heading whose chapters are all commented
+  // out) get no folder: an empty folder _meta.json fails nav validation and
+  // leaves a dangling root entry
+  const partMetas = partDirs
+    .map((dir, i) => ({
+      dir,
+      meta: {
+        label: cleanTitle(parts[i].title),
+        pages: files.filter((f) => f.dir === dir).map((f) => f.name.replace(/\.md$/, "")),
+      },
+    }))
+    .filter((pm, i) => {
+      if (pm.meta.pages.length) return true
+      warnings.push(`part "${parts[i].title}" has no chapters — folder skipped`)
+      return false
+    })
+  const livePartDirs = partMetas.map((pm) => pm.dir)
   const rootPages = usePartFolders
-    ? [...chapterSlugs.filter((s) => !s.includes("/")), ...partDirs]
+    ? [...chapterSlugs.filter((s) => !s.includes("/")), ...livePartDirs]
     : chapterSlugs
   const meta = { label, pages: rootPages }
-  const partMetas = partDirs.map((dir, i) => ({
-    dir,
-    meta: {
-      label: cleanTitle(parts[i].title),
-      pages: files.filter((f) => f.dir === dir).map((f) => f.name.replace(/\.md$/, "")),
-    },
-  }))
   return { files, meta, partMetas, parts, stats, warnings }
 }
 
