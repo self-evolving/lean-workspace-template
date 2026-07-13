@@ -28,7 +28,8 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
    under cards instead of over them.
 
 5. **Hover and click focus** (`renderEdge` + controls button + appended inline
-   script + CSS): edge groups carry `data-from`/`data-to`; hovering a file card
+   script + CSS): edge routes carry `data-from`/`data-to` (originally on wrapper
+   groups; patch 13 later moved them to the route paths); hovering a file card
    still adds `.canvas-hovering` and `.hover-focus`/`.hover-neighbor`/
    `.hover-edge` when nothing is selected. Clicking canvas nodes toggles a
    multi-selection state that adds `.canvas-selecting` and `.selection-focus`/

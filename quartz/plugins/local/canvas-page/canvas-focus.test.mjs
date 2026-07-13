@@ -417,6 +417,14 @@ test("delegated canvas hover updates only the local dependency neighborhood", ()
   assert.equal(nodes.c.node.classList.contains("hover-neighbor"), false);
 });
 
+test("selection and hover use separate focus renderers", () => {
+  const script = extractFocusIife();
+
+  assert.match(script, /const applySelectionFocus =/);
+  assert.doesNotMatch(script, /const applyFocus =/);
+  assert.doesNotMatch(script, /kind === "selection"/);
+});
+
 test("selection suppresses hover mutations and clearing restores the latent hover", () => {
   const harness = createHarness();
   const { container, nodes, edges, selectionPanel } = harness;
