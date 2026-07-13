@@ -90,3 +90,12 @@ test("buildNativeChapters: --chapter-level=section for split-level-1 plans", () 
   // subsection (not section) becomes the bold in-chapter header
   assert.match(files[0].content, /\*\*Sub\*\*/)
 })
+
+test("texToMd via buildNativeChapters: inline $$ blocks get their own delimiter lines", () => {
+  const src =
+    "\\chapter{C}\\begin{definition}\\label{d}\nGiven $$X = \\begin{cases} 1 \\\\ 0 \\end{cases}$$ we win.\n\\end{definition}"
+  const { files } = buildNativeChapters(src, { label: "L" })
+  // remark-math needs the closing $$ alone on its line; inline-styled blocks
+  // used to swallow the rest of the page as one unclosed math block
+  assert.match(files[0].content, /\n\$\$\nX = \\begin\{cases\} 1 \\\\ 0 \\end\{cases\}\n\$\$\n/)
+})

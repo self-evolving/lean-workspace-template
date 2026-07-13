@@ -43,6 +43,10 @@ const DISPLAY_ENVS = ["equation", "align", "alignat", "gather", "multline", "eqn
 function texToMd(tex, ctx) {
   if (!tex) return ""
   let s = tex
+  // display math already written as $$..$$: normalize the delimiters onto
+  // their own lines — remark-math rejects a closing $$ preceded by content on
+  // the same line, and the unclosed block then swallows the rest of the page
+  s = s.replace(/\$\$([\s\S]*?)\$\$/g, (_, b) => `\n$$\n${b.trim()}\n$$\n`)
   // display math: \[..\] and top-level AMS environments -> $$..$$ (normalized
   // to the starred forms — KaTeX numbers nothing here anyway)
   s = s.replace(/\\\[([\s\S]*?)\\\]/g, (_, b) => `\n$$\n${b.trim()}\n$$\n`)
