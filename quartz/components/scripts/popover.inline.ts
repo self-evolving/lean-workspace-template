@@ -1,14 +1,22 @@
 import { computePosition, flip, inline, shift } from "@floating-ui/dom"
 import { normalizeRelativeURLs } from "../../util/path"
 import { fetchCanonical } from "./util"
+import { createPopoverClearScheduler } from "./popoverClearScheduler"
 
 const p = new DOMParser()
 let activeAnchor: HTMLAnchorElement | null = null
 let activeTargetKey: string | null = null
 let activeRequestId = 0
-let clearPopoverTimeout: number | null = null
 
 const popoverCloseDelayMs = 300
+
+const popoverClearScheduler = createPopoverClearScheduler<HTMLAnchorElement, number>({
+  delayMs: popoverCloseDelayMs,
+  getSnapshot: () => ({ activeAnchor, activeTargetKey }),
+  clearActivePopover: () => clearActivePopover(),
+  setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+  clearTimeout: (timeout) => window.clearTimeout(timeout),
+})
 
 type PopoverTarget = {
   cacheKey: string
@@ -53,22 +61,11 @@ function deactivatePopovers() {
 }
 
 function cancelClearActivePopover() {
-  if (clearPopoverTimeout === null) return
-
-  window.clearTimeout(clearPopoverTimeout)
-  clearPopoverTimeout = null
+  popoverClearScheduler.cancel()
 }
 
 function scheduleClearActivePopover() {
-  const scheduledAnchor = activeAnchor
-  const scheduledTargetKey = activeTargetKey
-  cancelClearActivePopover()
-  clearPopoverTimeout = window.setTimeout(() => {
-    clearPopoverTimeout = null
-    if (activeAnchor === scheduledAnchor && activeTargetKey === scheduledTargetKey) {
-      clearActivePopover()
-    }
-  }, popoverCloseDelayMs)
+  popoverClearScheduler.schedule()
 }
 
 function scrollPopoverToHash(popoverElement: HTMLElement, hash: string) {
