@@ -9,7 +9,7 @@
 // Usage:
 //   node scripts/migrate-blueprint.mjs --plan=path/to/content.tex \
 //        --label="My Project blueprint" [--macros=common.tex,web.tex] \
-//        [--chapter-level=chapter|section] [--out=blueprint] [--dry-run]
+//        [--chapter-level=chapter|section] [--part-folders] [--out=blueprint] [--dry-run]
 //
 // \input chains resolve recursively; --macros expands the project's custom
 // \newcommand/\DeclareMathOperator shorthands; --chapter-level=section serves
@@ -246,13 +246,30 @@ export function buildNativeChapters(tex, opts = {}) {
       }),
     )
 
+  // --part-folders: group chapters into per-\part subfolders (two-level nav).
+  // Part i covers chapters [atChapter_i, atChapter_{i+1}); chapters before the
+  // first \part stay at the root. Chapter numbering stays global.
+  const usePartFolders = Boolean(opts.partFolders) && parts.length > 0
+  if (opts.partFolders && !parts.length)
+    warnings.push("--part-folders given but the plan has no \\part{} headings — ignored")
+  const partDirs = usePartFolders
+    ? parts.map((p, i) => `${i + 1}-${slugify(cleanTitle(p.title))}`)
+    : []
+  const dirForChapter = (idx) => {
+    if (!usePartFolders) return ""
+    let pi = -1
+    for (let i = 0; i < parts.length; i++) if (parts[i].atChapter <= idx) pi = i
+    return pi === -1 ? "" : partDirs[pi]
+  }
+
   const files = []
-  const chapterSlugs = []
+  const chapterSlugs = [] // relative to the blueprint root (folder-qualified)
   const width = String(chapters.length).length
   chapters.forEach((ch, idx) => {
     const title = cleanTitle(ch.title)
+    const dir = dirForChapter(idx)
     const slug = `${String(idx + 1).padStart(width, "0")}-${slugify(title)}`
-    chapterSlugs.push(slug)
+    chapterSlugs.push(dir ? `${dir}/${slug}` : slug)
     const lines = [
       "---",
       `title: ${yamlScalar(title)}`,
@@ -302,14 +319,40 @@ export function buildNativeChapters(tex, opts = {}) {
         }
       }
     }
-    files.push({ name: `${slug}.md`, content: lines.join("\n").replace(/\n{3,}/g, "\n\n") + "\n" })
+    files.push({
+      name: `${slug}.md`,
+      dir,
+      content: lines.join("\n").replace(/\n{3,}/g, "\n\n") + "\n",
+    })
   })
 
   // No dep-graph entry yet: the canvas file does not exist until the first
   // `lake build && npm run blueprint:sync`, and nav validation fails on a
   // dangling entry. The CLI checklist says to add it after that first sync.
-  const meta = { label, pages: chapterSlugs }
-  return { files, meta, parts, stats, warnings }
+  // With part folders, the root nav lists the folders (plus any pre-part
+  // root chapters); each folder's _meta.json labels the part.
+  // chapterless parts (e.g. a \part heading whose chapters are all commented
+  // out) get no folder: an empty folder _meta.json fails nav validation and
+  // leaves a dangling root entry
+  const partMetas = partDirs
+    .map((dir, i) => ({
+      dir,
+      meta: {
+        label: cleanTitle(parts[i].title),
+        pages: files.filter((f) => f.dir === dir).map((f) => f.name.replace(/\.md$/, "")),
+      },
+    }))
+    .filter((pm, i) => {
+      if (pm.meta.pages.length) return true
+      warnings.push(`part "${parts[i].title}" has no chapters — folder skipped`)
+      return false
+    })
+  const livePartDirs = partMetas.map((pm) => pm.dir)
+  const rootPages = usePartFolders
+    ? [...chapterSlugs.filter((s) => !s.includes("/")), ...livePartDirs]
+    : chapterSlugs
+  const meta = { label, pages: rootPages }
+  return { files, meta, partMetas, parts, stats, warnings }
 }
 
 // ---------------------------------------------------------------- cli
@@ -342,10 +385,11 @@ function main() {
     .map((f) => path.resolve(ROOT, f))
 
   const tex = resolveInputs(path.resolve(ROOT, PLAN))
-  const { files, meta, parts, stats, warnings } = buildNativeChapters(tex, {
+  const { files, meta, partMetas, parts, stats, warnings } = buildNativeChapters(tex, {
     chapterCmd: argOf("chapter-level", "chapter"),
     label: LABEL,
     macros: parseMacroFiles(macroFiles),
+    partFolders: argv.includes("--part-folders"),
   })
 
   for (const w of warnings) console.warn(`migrate: ${w}`)
@@ -357,13 +401,26 @@ function main() {
   if (parts.length) console.log(`migrate: parts: ${parts.map((p) => p.title).join(" | ")}`)
 
   if (argv.includes("--dry-run")) {
-    console.log(files.map((f) => f.name).join("\n"))
+    console.log(files.map((f) => (f.dir ? `${f.dir}/${f.name}` : f.name)).join("\n"))
     return
   }
   fs.mkdirSync(outDir, { recursive: true })
-  for (const f of files) fs.writeFileSync(path.join(outDir, f.name), f.content)
+  for (const f of files) {
+    const dirAbs = f.dir ? path.join(outDir, f.dir) : outDir
+    fs.mkdirSync(dirAbs, { recursive: true })
+    fs.writeFileSync(path.join(dirAbs, f.name), f.content)
+  }
+  for (const pm of partMetas)
+    fs.writeFileSync(
+      path.join(outDir, pm.dir, "_meta.json"),
+      JSON.stringify(pm.meta, null, 2) + "\n",
+    )
   fs.writeFileSync(path.join(outDir, "_meta.json"), JSON.stringify(meta, null, 2) + "\n")
-  console.log(`migrate: wrote ${files.length} chapter files + _meta.json to ${outDir}`)
+  console.log(
+    `migrate: wrote ${files.length} chapter files + ${
+      partMetas.length ? `${partMetas.length} part folders + ` : ""
+    }_meta.json to ${outDir}`,
+  )
   console.log(
     [
       "",

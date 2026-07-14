@@ -780,9 +780,14 @@ export function buildSourceModel({ blueprintDir, dataPath, leanSrcDirs }) {
   const uniqueSlug = makeUniqueSlugger()
 
   let chNum = 0
-  for (const seg of meta.pages) {
-    const mdCandidate = path.join(blueprintDir, seg + ".md")
-    const leanCandidate = path.join(blueprintDir, seg + ".lean")
+  // A pages entry is normally a chapter file; it may instead be a part folder
+  // with its own _meta.json (label + ordered chapter pages) — one level deep.
+  // Foldered chapters join the global numbering, with folder-qualified slugs
+  // matching Quartz page slugs (content/blueprint/<folder>/<file>).
+  const chapterEntries = []
+  const resolveChapterEntry = (dirAbs, slugPrefix, seg) => {
+    const mdCandidate = path.join(dirAbs, seg + ".md")
+    const leanCandidate = path.join(dirAbs, seg + ".lean")
     const hasMd = fs.existsSync(mdCandidate)
     const hasLean = fs.existsSync(leanCandidate)
     // a chapter lives in exactly one format at a time; preferring one silently
@@ -795,9 +800,24 @@ export function buildSourceModel({ blueprintDir, dataPath, leanSrcDirs }) {
       )
     }
     const file = hasLean ? leanCandidate : hasMd ? mdCandidate : null
-    const format = hasLean ? "lean" : "md"
-    if (!file) continue // folders / non-chapter entries are not ours to validate
-
+    if (!file) return false
+    chapterEntries.push({ file, format: hasLean ? "lean" : "md", slugPrefix, seg })
+    return true
+  }
+  for (const seg of meta.pages) {
+    if (typeof seg !== "string") continue // generated entries ({page,type}) are not ours
+    if (resolveChapterEntry(blueprintDir, "", seg)) continue
+    // part folder: recurse one level via its _meta.json; other non-chapter
+    // entries are not ours to validate
+    const subMetaPath = path.join(blueprintDir, seg, "_meta.json")
+    if (!fs.existsSync(subMetaPath)) continue
+    const subMeta = JSON.parse(fs.readFileSync(subMetaPath, "utf8"))
+    for (const sub of subMeta.pages ?? []) {
+      if (typeof sub !== "string") continue
+      resolveChapterEntry(path.join(blueprintDir, seg), `${seg}/`, sub)
+    }
+  }
+  for (const { file, format, slugPrefix, seg } of chapterEntries) {
     const src = fs.readFileSync(file, "utf8")
     let md
     if (format === "lean") {
@@ -815,7 +835,7 @@ export function buildSourceModel({ blueprintDir, dataPath, leanSrcDirs }) {
     const parsed = parsePlanMdSources([{ name: seg, src: md }])
     chNum++
     const fileName = path.basename(file)
-    const chapterSlug = chapterSlugFor(fileName)
+    const chapterSlug = slugPrefix + chapterSlugFor(fileName)
     for (const pc of parsed) {
       const chapter = {
         num: chNum,

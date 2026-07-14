@@ -56,8 +56,14 @@ function* leanFilesUnder(dir) {
 
 function modelCacheKey(cfg) {
   const parts = []
-  for (const f of fs.readdirSync(cfg.blueprintDir)) {
-    parts.push(statSig(path.join(cfg.blueprintDir, f)))
+  for (const f of fs.readdirSync(cfg.blueprintDir, { withFileTypes: true })) {
+    const p = path.join(cfg.blueprintDir, f.name)
+    parts.push(statSig(p))
+    // per-part chapter subfolders: folder mtime does not change on inner
+    // content edits, so stat the entries too (one level, matching the model)
+    if (f.isDirectory() && !f.name.startsWith(".")) {
+      for (const g of fs.readdirSync(p)) parts.push(statSig(path.join(p, g)))
+    }
   }
   parts.push(statSig(cfg.dataPath))
   for (const dir of cfg.leanSrcDirs) {
@@ -121,13 +127,27 @@ export function itemHeadingTitle(item) {
   return title || meta
 }
 
-function chapterHref(fromSlug, toItem, root) {
-  // both chapter pages live in the same folder; same-page refs use the bare anchor.
-  // anchors are github-slugged so they survive crawl-links/rehype-slug untouched.
+export function chapterHref(fromSlug, toItem, root) {
+  // same-page refs use the bare anchor; cross-chapter refs use a relative path
+  // (chapters may sit in per-part subfolders, so sibling-name links are not
+  // enough). anchors are github-slugged so they survive crawl-links/rehype-slug.
   const anchor = anchorOf(toItem.label)
   const target = `${root}/${toItem.chapter.slug}`
   if (fromSlug === target) return `#${anchor}`
-  return `${toItem.chapter.slug}.md#${anchor}`
+  // links resolve relative to the page's containing folder — which for the
+  // blueprint index (a folder-index page, slug === root) is the folder itself,
+  // not its parent
+  const fromParts = fromSlug === root ? fromSlug.split("/") : fromSlug.split("/").slice(0, -1)
+  const targetParts = target.split("/")
+  let common = 0
+  while (
+    common < fromParts.length &&
+    common < targetParts.length - 1 &&
+    fromParts[common] === targetParts[common]
+  )
+    common++
+  const up = "../".repeat(fromParts.length - common)
+  return `${up}${targetParts.slice(common).join("/")}.md#${anchor}`
 }
 
 const escapeHtml = (s) =>
