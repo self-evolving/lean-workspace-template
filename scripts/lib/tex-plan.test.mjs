@@ -118,3 +118,21 @@ test("yamlScalar single-quotes so LaTeX backslashes survive", () => {
   assert.equal(yamlScalar("Finite variation, $\\mathcal{V}$"), "'Finite variation, $\\mathcal{V}$'")
   assert.equal(yamlScalar("it's"), "'it''s'")
 })
+
+test("macro expansion: unbraced control-sequence and unterminated optional args", () => {
+  const table = parseMacroSources([
+    "\\newcommand{\\norm}[1]{\\lVert #1 \\rVert}\\newcommand{\\ball}[2][1]{B_{#1}(#2)}",
+  ])
+  // \norm\mu: the whole control sequence is the argument, not just the backslash
+  assert.equal(expandMacros("\\norm\\mu", table), "\\lVert \\mu \\rVert")
+  // unterminated optional arg falls back to the default instead of corrupting
+  assert.equal(expandMacros("\\ball{c} and [unrelated", table), "B_{1}(c) and [unrelated")
+})
+
+test("parsePlanTex: heading titles nest braces two levels deep", () => {
+  const src = "\\chapter{A \\frac{\\sqrt{n}}{2} bound}\\begin{lemma}\\label{l}\nx\n\\end{lemma}"
+  const { chapters } = parsePlanTex(src)
+  assert.equal(chapters.length, 1)
+  assert.equal(chapters[0].title, "A \\frac{\\sqrt{n}}{2} bound")
+  assert.equal(chapters[0].items.length, 1)
+})

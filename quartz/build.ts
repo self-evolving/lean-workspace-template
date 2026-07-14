@@ -237,151 +237,175 @@ async function rebuild(changes: ChangeEvent[], clientRefresh: () => void, buildD
     return
   }
 
-  const perf = new PerfTimer()
-  perf.addEvent("rebuild")
-  console.log(styleText("yellow", "Detected change, rebuilding..."))
+  // A watch-mode rebuild must never take the dev server down. The watcher
+  // fires mid-edit on transient states — a half-swapped chapter set, a
+  // _meta.json entry whose file isn't written yet — and strict validation
+  // (navigation completeness, frontmatter titles) throws on those. The voided
+  // rebuild promise would turn that throw into an unhandled rejection and
+  // kill the process; instead: report, keep serving the last good build, and
+  // let the still-pending entries in changesSinceLastBuild retry on the next
+  // change event.
+  let batchConsumed = false
+  try {
+    const perf = new PerfTimer()
+    perf.addEvent("rebuild")
+    console.log(styleText("yellow", "Detected change, rebuilding..."))
 
-  // update changesSinceLastBuild
-  for (const change of changes) {
-    changesSinceLastBuild[change.path] = change.type
-  }
-
-  const staticResources = getStaticResourcesFromPlugins(ctx)
-  const pathsToParse: FilePath[] = []
-  // blueprint-as-source patch: .lean chapters rebuild like markdown
-  const isPageSource = (fp: string) => [".md", ".lean"].includes(path.extname(fp))
-  for (const [fp, type] of Object.entries(changesSinceLastBuild)) {
-    if (type === "delete" || !isPageSource(fp)) continue
-    const fullPath = joinSegments(argv.directory, toPosixPath(fp)) as FilePath
-    pathsToParse.push(fullPath)
-  }
-
-  const parsed = await parseMarkdown(ctx, pathsToParse)
-  for (const content of parsed) {
-    contentMap.set(content[1].data.relativePath!, {
-      type: "markdown",
-      content,
-    })
-  }
-
-  // update state using changesSinceLastBuild
-  // we do this weird play of add => compute change events => remove
-  // so that partialEmitters can do appropriate cleanup based on the content of deleted files
-  for (const [file, change] of Object.entries(changesSinceLastBuild)) {
-    if (change === "delete") {
-      // universal delete case
-      contentMap.delete(file as FilePath)
+    // update changesSinceLastBuild
+    for (const change of changes) {
+      changesSinceLastBuild[change.path] = change.type
     }
 
-    // manually track non-markdown files as processed files only
-    // contains markdown files
-    if (change === "add" && !isPageSource(file)) {
-      contentMap.set(file as FilePath, {
-        type: "other",
+    const staticResources = getStaticResourcesFromPlugins(ctx)
+    const pathsToParse: FilePath[] = []
+    // blueprint-as-source patch: .lean chapters rebuild like markdown
+    const isPageSource = (fp: string) => [".md", ".lean"].includes(path.extname(fp))
+    for (const [fp, type] of Object.entries(changesSinceLastBuild)) {
+      if (type === "delete" || !isPageSource(fp)) continue
+      const fullPath = joinSegments(argv.directory, toPosixPath(fp)) as FilePath
+      pathsToParse.push(fullPath)
+    }
+
+    const parsed = await parseMarkdown(ctx, pathsToParse)
+    for (const content of parsed) {
+      contentMap.set(content[1].data.relativePath!, {
+        type: "markdown",
+        content,
       })
     }
-  }
 
-  const changeEvents: ChangeEvent[] = Object.entries(changesSinceLastBuild).map(([fp, type]) => {
-    const path = fp as FilePath
-    const processedContent = contentMap.get(path)
-    if (processedContent?.type === "markdown") {
-      const [_tree, file] = processedContent.content
+    // update state using changesSinceLastBuild
+    // we do this weird play of add => compute change events => remove
+    // so that partialEmitters can do appropriate cleanup based on the content of deleted files
+    for (const [file, change] of Object.entries(changesSinceLastBuild)) {
+      if (change === "delete") {
+        // universal delete case
+        contentMap.delete(file as FilePath)
+      }
+
+      // manually track non-markdown files as processed files only
+      // contains markdown files
+      if (change === "add" && !isPageSource(file)) {
+        contentMap.set(file as FilePath, {
+          type: "other",
+        })
+      }
+    }
+
+    const changeEvents: ChangeEvent[] = Object.entries(changesSinceLastBuild).map(([fp, type]) => {
+      const path = fp as FilePath
+      const processedContent = contentMap.get(path)
+      if (processedContent?.type === "markdown") {
+        const [_tree, file] = processedContent.content
+        return {
+          type,
+          path,
+          file,
+        }
+      }
+
       return {
         type,
         path,
-        file,
+      }
+    })
+
+    // update allFiles and then allSlugs with the consistent view of content map
+    // (blueprint-as-source patch: same .lean slug normalization as the initial build,
+    // or dev-server rebuilds would expose blueprint/Foo.lean instead of the page slug)
+    ctx.allFiles = Array.from(contentMap.keys())
+    ctx.allSlugs = ctx.allFiles.map((fp) => slugifyFilePath(leanAwareSlugPath(fp) as FilePath))
+
+    // Add extension-stripped slug aliases for PageType-registered extensions
+    const ptExtensions = getPageTypeExtensions(ctx)
+    if (ptExtensions.size > 0) {
+      const aliases = addVirtualPageSlugAliases(ctx.allSlugs, ptExtensions)
+      ctx.allSlugs.push(...aliases)
+    }
+    let processedFiles = filterContent(
+      ctx,
+      Array.from(contentMap.values())
+        .filter((file) => file.type === "markdown")
+        .map((file) => file.content),
+    )
+
+    let emittedFiles = 0
+
+    // Phase 1: Run PageTypeDispatcher first so it populates ctx.virtualPages
+    const dispatcher = cfg.plugins.emitters.find((e) => e.name === "PageTypeDispatcher")
+    if (dispatcher) {
+      ctx.virtualPages = []
+      const emitFn = dispatcher.partialEmit ?? dispatcher.emit
+      const emitted = await emitFn(ctx, processedFiles, staticResources, changeEvents)
+      if (emitted !== null) {
+        if (Symbol.asyncIterator in emitted) {
+          for await (const file of emitted) {
+            emittedFiles++
+            if (ctx.argv.verbose) {
+              console.log(`[emit:${dispatcher.name}] ${file}`)
+            }
+          }
+        } else {
+          emittedFiles += emitted.length
+          if (ctx.argv.verbose) {
+            for (const file of emitted) {
+              console.log(`[emit:${dispatcher.name}] ${file}`)
+            }
+          }
+        }
       }
     }
 
-    return {
-      type,
-      path,
-    }
-  })
+    // Phase 2: Run all other emitters with content extended by virtual pages
+    const contentWithVirtual =
+      ctx.virtualPages.length > 0 ? [...processedFiles, ...ctx.virtualPages] : processedFiles
+    for (const emitter of cfg.plugins.emitters) {
+      if (emitter.name === "PageTypeDispatcher") continue
+      // Try to use partialEmit if available, otherwise assume the output is static
+      const emitFn = emitter.partialEmit ?? emitter.emit
+      const emitted = await emitFn(ctx, contentWithVirtual, staticResources, changeEvents)
+      if (emitted === null) {
+        continue
+      }
 
-  // update allFiles and then allSlugs with the consistent view of content map
-  // (blueprint-as-source patch: same .lean slug normalization as the initial build,
-  // or dev-server rebuilds would expose blueprint/Foo.lean instead of the page slug)
-  ctx.allFiles = Array.from(contentMap.keys())
-  ctx.allSlugs = ctx.allFiles.map((fp) => slugifyFilePath(leanAwareSlugPath(fp) as FilePath))
-
-  // Add extension-stripped slug aliases for PageType-registered extensions
-  const ptExtensions = getPageTypeExtensions(ctx)
-  if (ptExtensions.size > 0) {
-    const aliases = addVirtualPageSlugAliases(ctx.allSlugs, ptExtensions)
-    ctx.allSlugs.push(...aliases)
-  }
-  let processedFiles = filterContent(
-    ctx,
-    Array.from(contentMap.values())
-      .filter((file) => file.type === "markdown")
-      .map((file) => file.content),
-  )
-
-  let emittedFiles = 0
-
-  // Phase 1: Run PageTypeDispatcher first so it populates ctx.virtualPages
-  const dispatcher = cfg.plugins.emitters.find((e) => e.name === "PageTypeDispatcher")
-  if (dispatcher) {
-    ctx.virtualPages = []
-    const emitFn = dispatcher.partialEmit ?? dispatcher.emit
-    const emitted = await emitFn(ctx, processedFiles, staticResources, changeEvents)
-    if (emitted !== null) {
       if (Symbol.asyncIterator in emitted) {
+        // Async generator case
         for await (const file of emitted) {
           emittedFiles++
           if (ctx.argv.verbose) {
-            console.log(`[emit:${dispatcher.name}] ${file}`)
+            console.log(`[emit:${emitter.name}] ${file}`)
           }
         }
       } else {
+        // Array case
         emittedFiles += emitted.length
         if (ctx.argv.verbose) {
           for (const file of emitted) {
-            console.log(`[emit:${dispatcher.name}] ${file}`)
+            console.log(`[emit:${emitter.name}] ${file}`)
           }
         }
       }
     }
+
+    console.log(
+      `Emitted ${emittedFiles} files to \`${argv.output}\` in ${perf.timeSince("rebuild")}`,
+    )
+    console.log(styleText("green", `Done rebuilding in ${perf.timeSince()}`))
+    changes.splice(0, numChangesInBuild)
+    batchConsumed = true
+    clientRefresh()
+  } catch (err) {
+    console.log(styleText("red", "Rebuild failed — still serving the last good build:"))
+    console.log(styleText("gray", String((err as Error)?.stack ?? err)))
+    // consume this batch's change events like the success path does; the
+    // paths stay recorded in changesSinceLastBuild, so the next rebuild
+    // retries them once the files are consistent again. Guarded: if the
+    // rebuild succeeded and only clientRefresh() threw, the batch is already
+    // consumed — splicing again here would drop unrelated queued events.
+    if (!batchConsumed) changes.splice(0, numChangesInBuild)
+  } finally {
+    release()
   }
-
-  // Phase 2: Run all other emitters with content extended by virtual pages
-  const contentWithVirtual =
-    ctx.virtualPages.length > 0 ? [...processedFiles, ...ctx.virtualPages] : processedFiles
-  for (const emitter of cfg.plugins.emitters) {
-    if (emitter.name === "PageTypeDispatcher") continue
-    // Try to use partialEmit if available, otherwise assume the output is static
-    const emitFn = emitter.partialEmit ?? emitter.emit
-    const emitted = await emitFn(ctx, contentWithVirtual, staticResources, changeEvents)
-    if (emitted === null) {
-      continue
-    }
-
-    if (Symbol.asyncIterator in emitted) {
-      // Async generator case
-      for await (const file of emitted) {
-        emittedFiles++
-        if (ctx.argv.verbose) {
-          console.log(`[emit:${emitter.name}] ${file}`)
-        }
-      }
-    } else {
-      // Array case
-      emittedFiles += emitted.length
-      if (ctx.argv.verbose) {
-        for (const file of emitted) {
-          console.log(`[emit:${emitter.name}] ${file}`)
-        }
-      }
-    }
-  }
-
-  console.log(`Emitted ${emittedFiles} files to \`${argv.output}\` in ${perf.timeSince("rebuild")}`)
-  console.log(styleText("green", `Done rebuilding in ${perf.timeSince()}`))
-  changes.splice(0, numChangesInBuild)
-  clientRefresh()
-  release()
 }
 
 export default async (argv: Argv, mut: Mutex, clientRefresh: () => void) => {
