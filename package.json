@@ -26,7 +26,8 @@
     "import:blueprint": "node scripts/import-blueprint.mjs",
     "blueprint:canvas": "node scripts/generate-canvas.mjs",
     "blueprint:data": "node scripts/blueprint-data.mjs",
-    "blueprint:sync": "npm run blueprint:data && npm run blueprint:canvas"
+    "blueprint:sync": "npm run blueprint:data && npm run blueprint:canvas",
+    "migrate:blueprint": "node scripts/migrate-blueprint.mjs"
   },
   "engines": {
     "npm": ">=10.9.2",
@@ -59,6 +60,7 @@
     "github-slugger": "^2.0.0",
     "globby": "^16.1.0",
     "gray-matter": "^4.0.3",
+    "hast-util-from-html": "^2.0.3",
     "hast-util-to-html": "^9.0.5",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "hast-util-to-string": "^3.0.1",

@@ -28,15 +28,25 @@
 // Usage:
 //   node scripts/import-blueprint.mjs --plan=path/to/content.tex \
 //        --data=path/to/blueprint-data.json [--label=...] [--out=blueprint]
-//   node scripts/import-blueprint.mjs [--base-url=...] [--out=blueprint]
+//        [--macros=a.tex,b.tex] [--chapter-level=chapter|section]
+//   node scripts/import-blueprint.mjs --base-url=... [--label=...] [--out=blueprint]
 //        [--content-root=content|docs] [--cache-dir=.quartz-cache/blueprint-import]
 //        [--refresh] [--embed=card|statement]
 
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { fromHtml } from "hast-util-from-html"
 import { Graphviz } from "@hpcc-js/wasm-graphviz"
+import {
+  PLAN_ENV_KINDS,
+  expandMacros,
+  parseMacroFiles,
+  parsePlanTex,
+  resolveInputs,
+  stripTexComments,
+  yamlScalar,
+} from "./lib/tex-plan.mjs"
 
 // ---------------------------------------------------------------- config
 const argv = process.argv.slice(2)
@@ -46,15 +56,21 @@ const argOf = (name, fallback) => {
 }
 const hasFlag = (name) => argv.includes(`--${name}`)
 
-const BASE = argOf(
-  "base-url",
-  "https://thefundamentaltheor3m.github.io/Sphere-Packing-Lean/blueprint",
-).replace(/\/+$/, "")
+const BASE = argOf("base-url", "").replace(/\/+$/, "")
 // Workspace mode inputs (when --plan is given, no network access happens).
 const PLAN = argOf("plan", "")
 const DATA = argOf("data", "")
 const OUT = argOf("out", "blueprint")
-const SITE_LABEL = argOf("label", PLAN ? "Blueprint" : "Sphere Packing blueprint")
+// Custom-macro definitions to expand in plan statements (comma-separated .tex
+// files, e.g. the project's blueprint/src/macros/common.tex).
+const MACRO_FILES = argOf("macros", "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+// Blueprints built with plastex split-level=1 use \section as the chapter unit.
+const CHAPTER_LEVEL = argOf("chapter-level", "chapter")
+// Scrape mode derives a missing --label from the published site's <title>.
+let SITE_LABEL = argOf("label", "") || (PLAN ? "Blueprint" : "")
 // card: compact title cards (full page via hover popover); statement: embed the
 // Statement section into each canvas node (heavier, the pre-card behavior).
 const EMBED = argOf("embed", "card") // card | statement
@@ -399,28 +415,47 @@ function parseModals(html) {
   return modals
 }
 
-function parseChapterToc(html) {
+export function parseChapterToc(html) {
   const tree = fromHtml(html)
   const chapters = new Map() // num -> { title, file }
-  const toc = findDesc(tree, (n) => isEl(n, "ul") && hasClass(n, "sub-toc-0"))
-  if (!toc) return chapters
-  for (const li of (toc.children || []).filter((c) => isEl(c, "li"))) {
-    const a = findDesc(li, (x) => isEl(x, "a") && x.properties?.href)
-    if (!a) continue
-    const ref = findDesc(li, (x) => isEl(x, "span") && hasClass(x, "toc_ref"))
-    const num = Number(ref ? collapse(textOf(ref)) : NaN)
-    if (!Number.isInteger(num)) continue
-    // Title = the li's own text minus sub-TOCs, the expander arrow, and the leading number.
-    // (plasTeX nests <a> inside <a> when a title contains \ref; the HTML parser splits the
-    // outer anchor there, so reading only the toc_entry span would drop the tail — e.g.
-    // "Proof of Theorem 5.3" would lose the "5.3".)
-    const parts = (li.children || []).filter(
-      (c) => !isEl(c, "ul") && !(isEl(c, "span") && hasClass(c, "expand-toc")),
-    )
-    let title = collapse(parts.map(textOf).join(" ")).replace(/\\\(|\\\)/g, "")
-    title = title.replace(new RegExp(`^${num}\\s*`), "")
-    chapters.set(num, { title, file: String(a.properties.href).split("#")[0] })
+  // plasTeX emits one <ul class="sub-toc-N"> nesting level per sectioning
+  // level. Without \part the chapters sit at level 0; with \part the top
+  // level is the parts and the chapters sit one level down. Chapter and part
+  // numbers are both bare integers (sections below are "3.1"-style), so the
+  // chapter level is the DEEPEST level whose entries carry integer numbers —
+  // reading only sub-toc-0 would title chapters after the parts.
+  const byLevel = new Map() // level -> [{num, title, file}]
+  const subTocLevel = (n) => {
+    const c = classes(n).find((cl) => /^sub-toc-\d+$/.test(cl))
+    return c ? Number(c.slice("sub-toc-".length)) : null
   }
+  for (const ul of findAll(tree, (n) => isEl(n, "ul") && subTocLevel(n) !== null)) {
+    const level = subTocLevel(ul)
+    for (const li of (ul.children || []).filter((c) => isEl(c, "li"))) {
+      const a = findDesc(li, (x) => isEl(x, "a") && x.properties?.href)
+      if (!a) continue
+      const ref = findDesc(li, (x) => isEl(x, "span") && hasClass(x, "toc_ref"))
+      const num = Number(ref ? collapse(textOf(ref)) : NaN)
+      if (!Number.isInteger(num)) continue
+      // Title = the li's own text minus sub-TOCs, the expander arrow, and the leading number.
+      // (plasTeX nests <a> inside <a> when a title contains \ref; the HTML parser splits the
+      // outer anchor there, so reading only the toc_entry span would drop the tail — e.g.
+      // "Proof of Theorem 5.3" would lose the "5.3".)
+      const parts = (li.children || []).filter(
+        (c) => !isEl(c, "ul") && !(isEl(c, "span") && hasClass(c, "expand-toc")),
+      )
+      let title = collapse(parts.map(textOf).join(" ")).replace(/\\\(|\\\)/g, "")
+      title = title.replace(new RegExp(`^${num}\\s*`), "")
+      if (!byLevel.has(level)) byLevel.set(level, [])
+      byLevel.get(level).push({ num, title, file: String(a.properties.href).split("#")[0] })
+    }
+  }
+  if (!byLevel.size) return chapters
+  // LaTeX chapter counters run globally through \part, so the printed numbers
+  // at the chapter level are unique and match the "3.1"-style item numbers
+  // the dep graph carries.
+  for (const c of byLevel.get(Math.max(...byLevel.keys())))
+    chapters.set(c.num, { title: c.title, file: c.file })
   return chapters
 }
 
@@ -602,87 +637,9 @@ const numCompare = (a, b) => {
 }
 
 // ---------------------------------------------------------------- plan (.tex) parsing
-const PLAN_ENV_KINDS = ["definition", "lemma", "proposition", "theorem", "corollary"]
-
-function stripTexComments(src) {
-  return src
-    .split("\n")
-    .map((line) => {
-      let out = ""
-      for (let i = 0; i < line.length; i++) {
-        if (line[i] === "%" && line[i - 1] !== "\\") break
-        out += line[i]
-      }
-      return out
-    })
-    .join("\n")
-}
-
-// Pull the leanblueprint directives out of an environment body; the remainder is
-// the statement/proof TeX (kept raw — Quartz's KaTeX pipeline renders $...$/$$...$$).
-function parseEnvDirectives(body) {
-  const out = { label: null, leanNames: [], leanok: false, uses: [] }
-  body = body.replace(/\\label\{([^}]*)\}/, (_, v) => {
-    out.label = v.trim()
-    return ""
-  })
-  body = body.replace(/\\uses\{([^}]*)\}/g, (_, v) => {
-    out.uses.push(
-      ...v
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    )
-    return ""
-  })
-  body = body.replace(/\\lean\{([^}]*)\}/g, (_, v) => {
-    out.leanNames.push(
-      ...v
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    )
-    return ""
-  })
-  body = body.replace(/\\leanok\b/g, () => {
-    out.leanok = true
-    return ""
-  })
-  out.tex = body.replace(/\n{3,}/g, "\n\n").trim()
-  return out
-}
-
-function parsePlanTex(src) {
-  src = stripTexComments(src)
-  const chapters = []
-  let current = null
-  const re = new RegExp(
-    `\\\\chapter\\{([^}]*)\\}|\\\\begin\\{(${PLAN_ENV_KINDS.join("|")})\\}(?:\\[([^\\]]*)\\])?([\\s\\S]*?)\\\\end\\{\\2\\}`,
-    "g",
-  )
-  let m
-  while ((m = re.exec(src))) {
-    if (m[1] !== undefined) {
-      current = { title: collapse(m[1]), items: [] }
-      chapters.push(current)
-      continue
-    }
-    if (!current) {
-      current = { title: "Blueprint", items: [] }
-      chapters.push(current)
-    }
-    const item = { kind: m[2], caption: m[3] ? collapse(m[3]) : null, ...parseEnvDirectives(m[4]) }
-    // an immediately-following proof environment belongs to this item
-    const rest = src.slice(re.lastIndex)
-    const pm = rest.match(/^\s*\\begin\{proof\}([\s\S]*?)\\end\{proof\}/)
-    if (pm) {
-      item.proof = parseEnvDirectives(pm[1])
-      re.lastIndex += pm[0].length
-    }
-    current.items.push(item)
-  }
-  return chapters
-}
+// TeX parsing (comments, \\input resolution, macro expansion, environment and
+// directive parsing) lives in scripts/lib/tex-plan.mjs, shared with the
+// native-chapter migration tooling.
 
 // Minimal TeX-to-markdown for plan prose: resolve \Cref/\ref to item links, a few
 // inline conveniences; math stays raw for KaTeX.
@@ -998,15 +955,19 @@ const write = (rel, body) => {
   fs.writeFileSync(abs, body)
   written++
 }
-const fm = (obj) => {
+// Frontmatter serializer. Strings are single-quoted YAML (via yamlScalar):
+// titles routinely carry LaTeX math ("Finite variation process, $\mathcal{V}$"),
+// and in double-quoted YAML the backslash is an escape character — emitting it
+// unescaped breaks the site build with "unknown escape sequence".
+export const fm = (obj) => {
   const lines = ["---"]
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined || v === null || (Array.isArray(v) && v.length === 0)) continue
     if (Array.isArray(v)) {
       lines.push(`${k}:`)
-      for (const it of v) lines.push(`  - "${it}"`)
+      for (const it of v) lines.push(`  - ${yamlScalar(it)}`)
     } else if (typeof v === "number") lines.push(`${k}: ${v}`)
-    else lines.push(`${k}: "${String(v).replace(/"/g, '\\"')}"`)
+    else lines.push(`${k}: ${yamlScalar(v)}`)
   }
   lines.push("---", "")
   return lines.join("\n")
@@ -1036,7 +997,12 @@ function buildModelFromPlan() {
   } else if (planPath.endsWith(".md")) {
     planChapters = parsePlanMdFiles([planPath])
   } else {
-    planChapters = parsePlanTex(fs.readFileSync(planPath, "utf8"))
+    // Resolve \input chains (leanblueprint's recommended multi-file layout is a
+    // content.tex of pure \input lines) and expand any --macros definitions
+    // before parsing, so custom shorthands don't leak into statements raw.
+    const macroTable = parseMacroFiles(MACRO_FILES.map((f) => path.resolve(ROOT, f)))
+    const texSrc = expandMacros(stripTexComments(resolveInputs(planPath)), macroTable)
+    planChapters = parsePlanTex(texSrc, { chapterCmd: CHAPTER_LEVEL }).chapters
   }
   if (!planChapters.some((c) => c.items.length))
     throw new Error(`plan: no items parsed from ${PLAN}`)
@@ -1223,6 +1189,12 @@ function buildModelFromPlan() {
 async function buildModelFromSite() {
   const depHtml = await getPage("dep_graph_document.html")
   const indexHtml = await getPage("index.html")
+
+  if (!SITE_LABEL) {
+    const titleEl = findDesc(fromHtml(indexHtml), (n) => isEl(n, "title"))
+    SITE_LABEL = (titleEl ? collapse(textOf(titleEl)) : "") || "Blueprint"
+    console.log(`label: "${SITE_LABEL}" (derived from the site title — override with --label)`)
+  }
 
   const { nodes: dotNodes, edges } = parseDot(extractDotSource(depHtml))
   const modals = parseModals(depHtml)
@@ -1553,9 +1525,48 @@ async function emitAll(model) {
 }
 
 // ---------------------------------------------------------------- main
-async function main() {
-  const model = PLAN ? buildModelFromPlan() : await buildModelFromSite()
-  await emitAll(model)
+// The importer rewrites <contentRoot>/<out>/ only. When that replaces the demo
+// blueprint, lakefile.toml `roots` can still name the deleted .lean chapters —
+// `lake build` (and CI) then fail with "no such file". Detect and say so.
+function warnStaleLakeConfig() {
+  const outDir = path.join(CONTENT, OUT)
+  const missing = []
+  try {
+    const lakefile = fs.readFileSync(path.join(ROOT, "lakefile.toml"), "utf8")
+    for (const st of lakefile.matchAll(/\[\[lean_lib\]\]([\s\S]*?)(?=\n\[\[|$)/g)) {
+      const src = st[1].match(/srcDir\s*=\s*"([^"]+)"/)?.[1]
+      if (!src || path.resolve(ROOT, src) !== outDir) continue
+      const roots = st[1].match(/roots\s*=\s*\[([^\]]*)\]/)?.[1] ?? ""
+      for (const r of roots.matchAll(/"([^"]+)"/g))
+        if (!fs.existsSync(path.join(outDir, `${r[1]}.lean`))) missing.push(r[1])
+    }
+  } catch {
+    return
+  }
+  if (!missing.length) return
+  console.warn(
+    [
+      "",
+      "WARNING: lakefile.toml `roots` still names .lean chapters this import replaced:",
+      ...missing.map((m) => `  - ${m}`),
+      "`lake build` (and CI) will fail until the Lean side is adopted or the",
+      "stale roots are removed — see docs/tutorial/quick-start/work-on-external-project.md",
+      "(step 5), and check blueprint.config.json `lakeRoots` while you are there.",
+    ].join("\n"),
+  )
 }
 
-main()
+async function main() {
+  if (!PLAN && !BASE) {
+    console.error(
+      "import-blueprint: pass --plan=<content.tex> or --base-url=<published blueprint URL>",
+    )
+    process.exit(1)
+  }
+  const model = PLAN ? buildModelFromPlan() : await buildModelFromSite()
+  await emitAll(model)
+  warnStaleLakeConfig()
+}
+
+// Import-safe: tests import the parsing helpers without running an import.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()
