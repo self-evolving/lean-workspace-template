@@ -32,7 +32,7 @@ const out = path.relative(ROOT, cfg.dataPath)
 // dependency package. Hand the extractor the list of chapter-referenced
 // names; it resolves them from the compiled environment regardless of their
 // module of origin.
-const extraDeclNames = collectLeanDeclNames(path.dirname(cfg.dataPath))
+const extraDeclNames = collectLeanDeclNames(cfg.blueprintDir)
 
 const args = ["exe", "blueprint-data", out, ...cfg.lakeRoots]
 if (extraDeclNames.length) {
