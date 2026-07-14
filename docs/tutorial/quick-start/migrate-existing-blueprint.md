@@ -57,22 +57,42 @@ the readiness statuses on the generated pages are placeholders computed from
 an empty kernel map. Like the scrape, the output is generated snapshot pages
 — the durable path is the next section.
 
-## Re-author as reference chapters (recommended)
+## Migrate to native chapters (recommended)
 
-For a project you intend to keep working on, the durable path is to write
-native chapters that point at your existing library — the code itself never
-moves:
+For a project you intend to keep working on, the durable path is native
+chapters that point at your existing library — and the conversion is
+automated:
 
-1. Add your library to `lakefile.toml` (e.g. a mathlib-style `[[require]]`,
-   with a matching `lean-toolchain`).
-2. Set `lakeRoots` in `blueprint.config.json` to your root modules, and
-   `leanSrcDirs` to where the `.lean` sources sit (snippet lookup only
-   searches the blueprint directory by default).
-3. Rewrite each chapter as a markdown chapter whose items carry
-   `lean="Your.Decl.Name"` — statuses, dependency edges, and source snippets
-   then come from the kernel automatically, and explicit `uses=` is only
-   needed where
-   [inference doesn't apply](../../documentation/grammar#dependencies-inferred-from-the-kernel).
+```bash
+npm run migrate:blueprint -- --plan=path/to/blueprint/src/content.tex \
+  --macros=path/to/blueprint/src/macros/common.tex \
+  --label="My Project blueprint"
+```
+
+This converts the leanblueprint LaTeX — resolving `\input` chains and
+expanding your custom macros — into native markdown chapters: items keep
+their labels, `\lean{}` becomes `lean=`, `\uses{}` becomes `uses=`, and the
+statements, proofs, and narrative prose come along as markdown. Unlike the
+snapshot imports above, the result participates fully in the pipeline:
+statuses, dependency edges, and source snippets recompute on every sync, and
+explicit `uses=` is only needed where
+[inference doesn't apply](../../documentation/grammar#dependencies-inferred-from-the-kernel).
+Blueprints built with plastex `split-level=1` (where `\section` is the
+chapter unit) pass `--chapter-level=section`.
+
+The script deliberately converts content only, and prints the checklist of
+what remains: adopting the Lean code itself (`[[require]]` or copy-in,
+toolchain, `lake update`), pointing `blueprint.config.json` at it, and the
+folder's landing page —
+[work on an external Lean project](work-on-external-project) walks exactly
+those steps.
+
+`\cite{}` commands come out in pandoc syntax (`[@key]`). To render them as
+linked references, enable the `citations` plugin in `quartz.config.yaml`
+(shipped disabled) and provide a `bibliography.bib`. Keys are sanitized for
+pandoc — spaces and non-ascii letters are normalized (`first course` →
+`first-course`, `Beiglböck` → `Beiglbock`) — so apply the identical renames
+to the keys in your `.bib`.
 
 There is no `\leanok` to port: every item's status is recomputed from the
 compiled environment on each build, so the migrated blueprint cannot silently

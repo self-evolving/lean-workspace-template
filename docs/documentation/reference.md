@@ -104,14 +104,15 @@ uses the same Quartz build with an explicit content-root override.
 
 ## Commands
 
-| command                    | what it does                                            |
-| -------------------------- | ------------------------------------------------------- |
-| `lake build`               | typecheck (chapters in `content/blueprint/` ARE source) |
-| `npm run blueprint:data`   | extract kernel truth (reads `blueprint.config.json`)    |
-| `npm run blueprint:sync`   | extract + regenerate the canvas in one step             |
-| `npm run blueprint:canvas` | regenerate the dependency canvas                        |
-| `npm run dev`              | build + serve `content/` with hot reload                |
-| `npm run build`            | production build for `content/`                         |
+| command                     | what it does                                            |
+| --------------------------- | ------------------------------------------------------- |
+| `lake build`                | typecheck (chapters in `content/blueprint/` ARE source) |
+| `npm run blueprint:data`    | extract kernel truth (reads `blueprint.config.json`)    |
+| `npm run blueprint:sync`    | extract + regenerate the canvas in one step             |
+| `npm run blueprint:canvas`  | regenerate the dependency canvas                        |
+| `npm run migrate:blueprint` | convert a leanblueprint LaTeX plan into native chapters |
+| `npm run dev`               | build + serve `content/` with hot reload                |
+| `npm run build`             | production build for `content/`                         |
 
 To build or serve this repository's own `docs/` instead of `content/`, set the
 content root: `QUARTZ_CONTENT_ROOT=docs npm run build` (or `npm run dev`).
