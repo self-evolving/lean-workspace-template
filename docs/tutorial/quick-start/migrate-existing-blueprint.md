@@ -44,12 +44,18 @@ kernel data, the importer can combine them directly:
 node scripts/import-blueprint.mjs --plan=path/to/plan --data=path/to/blueprint-data.json
 ```
 
-`--out` and `--label` work here too. Omitting `--data` is allowed and makes
-this a trial conversion with no kernel truth behind it: every `\lean{}`
-reference reports "not found", and the readiness statuses on the generated
-pages are placeholders computed from an empty kernel map. Like the scrape,
-the output is generated snapshot pages — the durable path is the next
-section.
+`--out` and `--label` work here too, and multi-file LaTeX plans work as-is
+(`\input` chains resolve). Two more flags cover the common leanblueprint
+layouts: `--macros=common.tex,web.tex` expands the project's custom
+`\newcommand`/`\DeclareMathOperator` shorthands so they don't reach the
+rendered statements raw, and `--chapter-level=section` serves blueprints
+built with plastex `split-level=1`, where `\section` is the chapter unit.
+
+Omitting `--data` is allowed and makes this a trial conversion with no
+kernel truth behind it: every `\lean{}` reference reports "not found", and
+the readiness statuses on the generated pages are placeholders computed from
+an empty kernel map. Like the scrape, the output is generated snapshot pages
+— the durable path is the next section.
 
 ## Re-author as reference chapters (recommended)
 
