@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url"
 
 import {
   buildSourceModel,
+  collectLeanDeclNames,
   computeStatusesAndEdges,
   githubSourceUrl,
   loadBlueprintConfig,
@@ -302,4 +303,30 @@ test("chapterHref: folder-index root page and cross-folder chapters resolve corr
   assert.equal(chapterHref("blueprint/1-part/02-beta", flat, "blueprint"), "../01-alpha.md#x")
   // same page
   assert.equal(chapterHref("blueprint/01-alpha", flat, "blueprint"), "#x")
+})
+
+test("collectLeanDeclNames: headings only, .lean chapters, part folders, fences skipped", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bp-decls-"))
+  fs.writeFileSync(
+    path.join(dir, "01-a.md"),
+    '## Definition: x {#x lean="B.b, A.a"}\n\n## Lemma: y {#y lean=C.c uses="x"}\n' +
+      '\nProse mentioning lean="Prose.ignored" stays out.\n' +
+      '\n```md\n## Lemma: fake {#f lean="Fence.ignored"}\n```\n',
+  )
+  fs.writeFileSync(
+    path.join(dir, "02-b.md"),
+    '## Definition: z {#z lean="A.a"}\n\n## Definition: w {#w lean=next}\n',
+  )
+  // literate .lean chapter: explicit lean= headings inside doc blocks count
+  fs.writeFileSync(
+    path.join(dir, "Ch03_Lit.lean"),
+    '/-! # Chapter\n\n## Lemma: lit {#lem:lit lean="D.d"}\n-/\ntheorem d : True := trivial\n',
+  )
+  // part folder: one level deep, matching the source model
+  fs.mkdirSync(path.join(dir, "1-part"))
+  fs.writeFileSync(path.join(dir, "1-part", "04-c.md"), '## Definition: q {#q lean="E.e"}\n')
+  fs.writeFileSync(path.join(dir, "notes.txt"), 'lean="Ignored.name"\n')
+  assert.deepEqual(collectLeanDeclNames(dir), ["A.a", "B.b", "C.c", "D.d", "E.e"])
+  // missing directory degrades to an empty list, not a throw
+  assert.deepEqual(collectLeanDeclNames(path.join(dir, "nope")), [])
 })

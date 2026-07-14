@@ -121,11 +121,11 @@ export function expandMacros(src, table) {
       let j = i + m[0].length
       const args = []
       if (def.optDefault !== null) {
-        if (src[j] === "[") {
-          const close = src.indexOf("]", j)
+        const close = src[j] === "[" ? src.indexOf("]", j) : -1
+        if (close !== -1) {
           args.push(src.slice(j + 1, close))
           j = close + 1
-        } else args.push(def.optDefault)
+        } else args.push(def.optDefault) // no [arg] (or unterminated): use the default
       }
       while (args.length < def.nargs) {
         while (/\s/.test(src[j])) j++
@@ -134,6 +134,12 @@ export function expandMacros(src, table) {
           if (!g) break
           args.push(g.inner)
           j = g.end
+        } else if (src[j] === "\\") {
+          // unbraced control-sequence argument (\norm\mu): the whole \mu is the arg
+          const cs = /^\\[A-Za-z@]+|^\\./.exec(src.slice(j))
+          if (!cs) break
+          args.push(cs[0])
+          j += cs[0].length
         } else {
           args.push(src[j])
           j++
@@ -204,7 +210,11 @@ export function parsePlanTex(src, opts = {}) {
   const chapters = []
   const parts = []
   let current = null
-  const T = "(?:[^{}]|\\{[^{}]*\\})*"
+  // heading titles may nest braces two levels deep (\chapter{A \frac{\sqrt{n}}{2}});
+  // deeper nesting is vanishingly rare in section titles and would fall through,
+  // attaching the chapter's items to the previous chapter
+  const T1 = "(?:[^{}]|\\{[^{}]*\\})*"
+  const T = `(?:[^{}]|\\{${T1}\\})*`
   const re = new RegExp(
     `\\\\part\\{(${T})\\}|\\\\${chapterCmd}\\*?\\{(${T})\\}|\\\\begin\\{(${kinds.join("|")})\\}(?:\\[([^\\]]*)\\])?([\\s\\S]*?)\\\\end\\{\\3\\}`,
     "g",

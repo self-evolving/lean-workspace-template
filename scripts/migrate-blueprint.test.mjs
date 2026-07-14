@@ -192,3 +192,11 @@ test("--part-folders: chapterless parts are skipped with a warning", () => {
   )
   assert.ok(warnings.some((w) => w.includes('"Empty" has no chapters')))
 })
+
+test("inline \\(...\\) math converts to $...$", () => {
+  const src =
+    "\\chapter{C}\\begin{definition}\\label{d}\nLet \\( x \\in\n\\mathbb{R} \\) be given.\n\\end{definition}"
+  const { files } = buildNativeChapters(src, { label: "L" })
+  assert.match(files[0].content, /Let \$x \\in \\mathbb\{R\}\$ be given\./)
+  assert.doesNotMatch(files[0].content, /\\\(/)
+})

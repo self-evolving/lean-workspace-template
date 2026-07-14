@@ -21,6 +21,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { loadBlueprintConfig } from "./lib/blueprint-model.mjs"
 import {
   PLAN_ENV_KINDS,
   collapse,
@@ -50,6 +51,8 @@ function texToMd(tex, ctx) {
   // display math: \[..\] and top-level AMS environments -> $$..$$ (normalized
   // to the starred forms — KaTeX numbers nothing here anyway)
   s = s.replace(/\\\[([\s\S]*?)\\\]/g, (_, b) => `\n$$\n${b.trim()}\n$$\n`)
+  // inline math: \(..\) -> $..$
+  s = s.replace(/\\\(([\s\S]*?)\\\)/g, (_, b) => `$${collapse(b)}$`)
   for (const env of DISPLAY_ENVS) {
     const re = new RegExp(`\\\\begin\\{${env}(\\*?)\\}([\\s\\S]*?)\\\\end\\{${env}\\1\\}`, "g")
     s = s.replace(re, (_, star, body) => {
@@ -369,15 +372,12 @@ function main() {
     process.exit(1)
   }
   const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-  const contentRoot = (() => {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, "blueprint.config.json"), "utf8"))
-      return cfg.contentRoot ?? "content"
-    } catch {
-      return "content"
-    }
-  })()
-  const outDir = path.resolve(ROOT, contentRoot, argOf("out", "blueprint"))
+  // Resolve the destination through the real config loader so per-blueprint
+  // contentRoot/root overrides land the chapters where blueprint:sync and the
+  // site build will actually read them. --out overrides only the folder name.
+  const cfg = loadBlueprintConfig(ROOT)
+  const outName = argOf("out", "")
+  const outDir = outName ? path.resolve(cfg.contentDir, outName) : cfg.blueprintDir
   const macroFiles = argOf("macros", "")
     .split(",")
     .map((s) => s.trim())
@@ -428,7 +428,7 @@ function main() {
       "  - adopt the Lean code ([[require]] or copy-in, lean-toolchain, lake update)",
       "  - point blueprint.config.json lakeRoots/leanSrcDirs/repo at it",
       "  - remove the demo chapters + stale lakefile roots if this replaced the demo",
-      `  - rewrite ${path.join(contentRoot, argOf("out", "blueprint"), "index.md")} (landing page + attribution)`,
+      `  - rewrite ${path.join(path.relative(ROOT, outDir), "index.md")} (landing page + attribution)`,
       "  - after the first `lake build && npm run blueprint:sync` creates the canvas,",
       '    add { "page": "dep-graph", "type": "canvas", "title": "Dependency canvas" }',
       "    back to the top of _meta.json pages",

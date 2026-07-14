@@ -67,6 +67,57 @@ export function loadBlueprintConfig(repoRoot, overrides = {}) {
   return cfg
 }
 
+// Collect every lean="..." declaration name referenced by the blueprint's
+// chapters (deduped, sorted). Reads item HEADING lines only — the same
+// surface the plan parser reads — so prose or code fences that merely mention
+// lean= are not collected; `lean=next` (the literate-chapter binding, whose
+// declaration already lives in lakeRoots) is skipped. Both .md chapters and
+// literate .lean chapters (headings inside /-! -/ doc blocks) are scanned,
+// one part-folder level deep, matching the source model. The extractor
+// resolves the names from the compiled environment even when they live
+// outside the root modules — theory upstreamed to mathlib, code in a
+// dependency package (`lake exe blueprint-data ... --decls=<file>`).
+export function collectLeanDeclNames(blueprintDir) {
+  const names = new Set()
+  const collectFile = (abs) => {
+    let src
+    try {
+      src = fs.readFileSync(abs, "utf8")
+    } catch {
+      return
+    }
+    let inFence = false
+    for (const line of src.split("\n")) {
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence
+        continue
+      }
+      if (inFence) continue
+      const h = line.match(HEADING_ATTR_RE)
+      if (!h?.[3]) continue
+      const lean = parseAttrStr(h[3]).lean
+      if (!lean || lean === "next" || lean === true) continue
+      for (const n of splitList(lean)) names.add(n)
+    }
+  }
+  const collectDir = (dir, depth) => {
+    let entries
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) {
+        if (depth > 0 && !e.name.startsWith(".")) collectDir(p, depth - 1)
+      } else if (e.name.endsWith(".md") || e.name.endsWith(".lean")) collectFile(p)
+    }
+  }
+  collectDir(blueprintDir, 1)
+  return [...names].sort()
+}
+
 let cachedSourceRef = null
 export function sourceRef(fallback = "main") {
   if (cachedSourceRef) return cachedSourceRef
