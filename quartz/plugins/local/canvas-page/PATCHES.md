@@ -28,7 +28,8 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
    under cards instead of over them.
 
 5. **Hover and click focus** (`renderEdge` + controls button + appended inline
-   script + CSS): edge groups carry `data-from`/`data-to`; hovering a file card
+   script + CSS): edge routes carry `data-from`/`data-to` (originally on wrapper
+   groups; patch 13 later moved them to the route paths); hovering a file card
    still adds `.canvas-hovering` and `.hover-focus`/`.hover-neighbor`/
    `.hover-edge` when nothing is selected. Clicking canvas nodes toggles a
    multi-selection state that adds `.canvas-selecting` and `.selection-focus`/
@@ -84,3 +85,25 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     card rows reserve space for their action buttons, and preview hash
     highlighting resolves hidden blueprint label anchors to the visible heading
     with an in-place shaded marker.
+
+13. **Compact SVG edge DOM** (`computeMarkerPlan` + `renderEdgeMarkers` +
+    `renderEdge`): arrowhead definitions are emitted once per canvas, direction,
+    and resolved stroke color instead of once per edge. The visible route path
+    now carries the edge class and data attributes directly, eliminating a
+    redundant wrapper and noninteractive SVG hit target per edge. Edges retain
+    their individual color, dashed style, direction, labels, and focus classes
+    while large canvases avoid thousands of duplicate elements.
+
+14. **Indexed and delegated hover focus** (focus inline script): node neighbors
+    and incident edges are indexed once during initialization, and two container
+    listeners replace per-card enter/leave listeners. Hover updates now touch
+    only the previous and next cards' local graph neighborhoods; they no longer
+    sweep every node and edge or rebuild the selection panel. Selection still
+    wins visually, while the latent hovered card is restored when selection is
+    cleared.
+
+15. **Shared card action icon** (`renderSidebarButton` + CSS): the accessible
+    sidebar-preview button is now empty and draws its decorative icon from one
+    CSS mask. This removes an identical inline SVG, rectangle, and two paths from
+    every file card without changing its label, hit target, color, or click
+    behavior.

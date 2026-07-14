@@ -10974,10 +10974,6 @@ var canvas_default = `.canvas-page {
   overflow: visible;
 }
 
-.canvas-edge path {
-  pointer-events: stroke;
-}
-
 .canvas-edge-label-bg {
   fill: var(--light);
   fill-opacity: 0.85;
@@ -11409,8 +11405,16 @@ body.canvas-preview-resizing {
   background: color-mix(in srgb, var(--canvas-node-color, var(--secondary)) 16%, var(--light));
   opacity: 1;
 }
-.canvas-open-sidebar svg {
-  pointer-events: none;
+.canvas-open-sidebar::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M9 4v16'/%3E%3Cpath d='m14 9 3 3-3 3'/%3E%3C/svg%3E");
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
 }
 .canvas-node-file .canvas-file-label > a {
   min-width: 0;
@@ -11436,14 +11440,14 @@ body.canvas-preview-resizing {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.canvas-edges path {
+.canvas-edges path.canvas-edge {
   opacity: 0.75;
 }
 
 /* hover focus: dim everything but the hovered card, its direct parents/children,
    and the incident edges */
 .canvas-node,
-.canvas-edges path {
+.canvas-edges path.canvas-edge {
   transition: opacity 0.15s ease;
 }
 .canvas-hovering .canvas-node {
@@ -11456,10 +11460,10 @@ body.canvas-preview-resizing {
 .canvas-hovering .canvas-node.hover-focus {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
-.canvas-hovering .canvas-edges .canvas-edge path {
+.canvas-hovering .canvas-edges path.canvas-edge {
   opacity: 0.06;
 }
-.canvas-hovering .canvas-edges .canvas-edge.hover-edge path {
+.canvas-hovering .canvas-edges path.canvas-edge.hover-edge {
   opacity: 1;
   stroke-width: 2.5;
 }
@@ -11474,10 +11478,10 @@ body.canvas-preview-resizing {
   box-shadow: 0 0 0 2px var(--secondary), 0 4px 16px rgba(0, 0, 0, 0.22);
   z-index: 2;
 }
-.canvas-selecting .canvas-edges .canvas-edge path {
+.canvas-selecting .canvas-edges path.canvas-edge {
   opacity: 0.06;
 }
-.canvas-selecting .canvas-edges .canvas-edge.selection-edge path {
+.canvas-selecting .canvas-edges path.canvas-edge.selection-edge {
   opacity: 1;
   stroke-width: 2.5;
 }
@@ -11673,6 +11677,8 @@ canvas_inline_default += `
       container.dataset.hoverInit = "true"
       const parents = new Map()
       const children = new Map()
+      const neighbors = new Map()
+      const incidentEdges = new Map()
       const add = (m, k, v) => {
         if (!m.has(k)) m.set(k, new Set())
         m.get(k).add(v)
@@ -11681,6 +11687,10 @@ canvas_inline_default += `
       for (const g of edgeEls) {
         add(children, g.dataset.from, g.dataset.to)
         add(parents, g.dataset.to, g.dataset.from)
+        add(neighbors, g.dataset.from, g.dataset.to)
+        add(neighbors, g.dataset.to, g.dataset.from)
+        add(incidentEdges, g.dataset.from, g)
+        add(incidentEdges, g.dataset.to, g)
       }
       const nodeEls = new Map()
       for (const el of container.querySelectorAll(".canvas-node[data-node-id]")) {
@@ -11689,6 +11699,7 @@ canvas_inline_default += `
       const selectedIds = new Set()
       const cleanupFns = []
       let hoverId
+      let renderedHoverId
       let pointerStart
       let clickPointer
       let suppressClickUntil = 0
@@ -11794,35 +11805,59 @@ canvas_inline_default += `
         selectionPanel.hidden = !selectionPanel.hidden
         updateSelectionControl()
       }
+      const clearRenderedHover = () => {
+        if (!renderedHoverId) return
+        nodeEls.get(renderedHoverId)?.classList.remove("hover-focus")
+        for (const id of neighbors.get(renderedHoverId) ?? []) {
+          nodeEls.get(id)?.classList.remove("hover-neighbor")
+        }
+        for (const edge of incidentEdges.get(renderedHoverId) ?? []) {
+          edge.classList.remove("hover-edge")
+        }
+        renderedHoverId = undefined
+        container.classList.remove("canvas-hovering")
+      }
+      const renderHover = () => {
+        const nextId = selectedIds.size === 0 && hoverId && nodeEls.has(hoverId) ? hoverId : undefined
+        if (nextId === renderedHoverId) return
+        clearRenderedHover()
+        if (!nextId) return
+        renderedHoverId = nextId
+        container.classList.add("canvas-hovering")
+        nodeEls.get(nextId)?.classList.add("hover-focus")
+        for (const id of neighbors.get(nextId) ?? []) {
+          nodeEls.get(id)?.classList.add("hover-neighbor")
+        }
+        for (const edge of incidentEdges.get(nextId) ?? []) {
+          edge.classList.add("hover-edge")
+        }
+      }
       const clearClasses = () => {
         container.classList.remove("canvas-hovering", "canvas-selecting")
         for (const el of nodeEls.values()) {
           el.classList.remove("hover-focus", "hover-neighbor", "selection-focus", "selection-neighbor")
         }
         for (const el of edgeEls) el.classList.remove("hover-edge", "selection-edge")
+        renderedHoverId = undefined
       }
-      const applyFocus = (ids, kind) => {
-        const activeClass = kind === "selection" ? "canvas-selecting" : "canvas-hovering"
-        const focusClass = kind === "selection" ? "selection-focus" : "hover-focus"
-        const neighborClass = kind === "selection" ? "selection-neighbor" : "hover-neighbor"
-        const edgeClass = kind === "selection" ? "selection-edge" : "hover-edge"
+      const applySelectionFocus = (ids) => {
         const focusIds = new Set(ids)
-        container.classList.add(activeClass)
+        container.classList.add("canvas-selecting")
         for (const id of focusIds) {
-          nodeEls.get(id)?.classList.add(focusClass)
-          for (const p of parents.get(id) ?? []) nodeEls.get(p)?.classList.add(neighborClass)
-          for (const c of children.get(id) ?? []) nodeEls.get(c)?.classList.add(neighborClass)
+          nodeEls.get(id)?.classList.add("selection-focus")
+          for (const p of parents.get(id) ?? []) nodeEls.get(p)?.classList.add("selection-neighbor")
+          for (const c of children.get(id) ?? []) nodeEls.get(c)?.classList.add("selection-neighbor")
         }
         for (const g of edgeEls) {
-          if (focusIds.has(g.dataset.from) || focusIds.has(g.dataset.to)) g.classList.add(edgeClass)
+          if (focusIds.has(g.dataset.from) || focusIds.has(g.dataset.to)) g.classList.add("selection-edge")
         }
       }
       const renderFocus = () => {
         clearClasses()
         if (selectedIds.size > 0) {
-          applyFocus(selectedIds, "selection")
+          applySelectionFocus(selectedIds)
         } else if (hoverId && nodeEls.has(hoverId)) {
-          applyFocus([hoverId], "hover")
+          renderHover()
         }
         updateSelectionControl()
       }
@@ -11877,29 +11912,35 @@ canvas_inline_default += `
         }
         clearSelection()
       }
-      for (const [id, el] of nodeEls) {
-        if (!el.classList.contains("canvas-node-file")) continue
-        const onEnter = () => {
-          hoverId = id
-          renderFocus()
-        }
-        const onLeave = () => {
-          if (hoverId === id) hoverId = undefined
-          renderFocus()
-        }
-        el.addEventListener("mouseenter", onEnter)
-        el.addEventListener("mouseleave", onLeave)
-        cleanupFns.push(() => {
-          el.removeEventListener("mouseenter", onEnter)
-          el.removeEventListener("mouseleave", onLeave)
-        })
+      const eventFileNode = (target) => {
+        const node = target instanceof Element ? target.closest(".canvas-node-file[data-node-id]") : null
+        const id = node?.dataset.nodeId
+        return id && nodeEls.get(id) === node ? { id, node } : undefined
       }
+      const handleMouseOver = (event) => {
+        const match = eventFileNode(event.target)
+        if (!match) return
+        if (event.relatedTarget instanceof Element && match.node.contains(event.relatedTarget)) return
+        hoverId = match.id
+        renderHover()
+      }
+      const handleMouseOut = (event) => {
+        const match = eventFileNode(event.target)
+        if (!match) return
+        if (event.relatedTarget instanceof Element && match.node.contains(event.relatedTarget)) return
+        if (hoverId === match.id) hoverId = undefined
+        renderHover()
+      }
+      container.addEventListener("mouseover", handleMouseOver)
+      container.addEventListener("mouseout", handleMouseOut)
       container.addEventListener("pointerdown", rememberPointer, true)
       container.addEventListener("pointermove", trackPointer, true)
       container.addEventListener("pointerup", finishPointer, true)
       container.addEventListener("click", handleClick)
       selectionControl?.addEventListener("click", toggleSelectionPanel)
       cleanupFns.push(() => {
+        container.removeEventListener("mouseover", handleMouseOver)
+        container.removeEventListener("mouseout", handleMouseOut)
         container.removeEventListener("pointerdown", rememberPointer, true)
         container.removeEventListener("pointermove", trackPointer, true)
         container.removeEventListener("pointerup", finishPointer, true)
@@ -12320,26 +12361,7 @@ function resolveEmbeddedHtml(fileSlug, canvasSlug, allFiles, subpath, visited) {
 }
 function renderSidebarButton(href, title) {
   const label = title ? `Open ${title} in sidebar` : "Open page in sidebar";
-  return /* @__PURE__ */ u2("button", { class: "canvas-open-sidebar", type: "button", "data-href": href, "data-title": title ?? "", "aria-label": label, title: "Open in sidebar", children: /* @__PURE__ */ u2(
-    "svg",
-    {
-      xmlns: "http://www.w3.org/2000/svg",
-      width: "14",
-      height: "14",
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      "aria-hidden": "true",
-      children: [
-        /* @__PURE__ */ u2("rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }),
-        /* @__PURE__ */ u2("path", { d: "M9 4v16" }),
-        /* @__PURE__ */ u2("path", { d: "m14 9 3 3-3 3" })
-      ]
-    }
-  ) });
+  return /* @__PURE__ */ u2("button", { class: "canvas-open-sidebar", type: "button", "data-href": href, "data-title": title ?? "", "aria-label": label, title: "Open in sidebar" });
 }
 function renderNode(node, renderedTexts, slug2, allFiles, visited) {
   const color = resolveColor(node.color);
@@ -12535,7 +12557,60 @@ function computeAnchorPlan(edges, nodeMap) {
   }
   return plan;
 }
-function renderEdge(edge, nodeMap, anchorPlan) {
+function markerScopeId(slug2) {
+  let hash = 2166136261;
+  for (let i = 0; i < slug2.length; i++) {
+    hash ^= slug2.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+function computeMarkerPlan(edges, nodeMap, slug2) {
+  const markers = [];
+  const markerIds = {
+    start: /* @__PURE__ */ new Map(),
+    end: /* @__PURE__ */ new Map()
+  };
+  const byEdge = /* @__PURE__ */ new Map();
+  const scope = markerScopeId(slug2);
+  const markerId = (position, stroke) => {
+    const ids = markerIds[position];
+    const existing = ids.get(stroke);
+    if (existing) return existing;
+    const id = `canvas-arrow-${scope}-${position}-${ids.size}`;
+    ids.set(stroke, id);
+    markers.push({ id, position, stroke });
+    return id;
+  };
+  for (const edge of edges) {
+    if (!nodeMap.has(edge.fromNode) || !nodeMap.has(edge.toNode)) continue;
+    const stroke = resolveColor(edge.color) ?? "var(--gray)";
+    const ids = {};
+    if (edge.fromEnd === "arrow") ids.start = markerId("start", stroke);
+    if ((edge.toEnd ?? "arrow") === "arrow") ids.end = markerId("end", stroke);
+    byEdge.set(edge, ids);
+  }
+  return { markers, byEdge };
+}
+function renderEdgeMarkers(markerPlan) {
+  if (markerPlan.markers.length === 0) return null;
+  return /* @__PURE__ */ u2("defs", { children: markerPlan.markers.map(
+    ({ id, position, stroke }) => /* @__PURE__ */ u2(
+      "marker",
+      {
+        id,
+        viewBox: "0 0 10 10",
+        refX: position === "start" ? "1.5" : "8.5",
+        refY: "5",
+        markerWidth: "5",
+        markerHeight: "5",
+        orient: "auto-start-reverse",
+        children: /* @__PURE__ */ u2("path", { d: position === "start" ? "M 10 0 L 0 5 L 10 10 z" : "M 0 0 L 10 5 L 0 10 z", fill: stroke })
+      }
+    )
+  ) });
+}
+function renderEdge(edge, nodeMap, anchorPlan, markerPlan) {
   const fromNode = nodeMap.get(edge.fromNode);
   const toNode = nodeMap.get(edge.toNode);
   if (!fromNode || !toNode) return null;
@@ -12546,8 +12621,7 @@ function renderEdge(edge, nodeMap, anchorPlan) {
   const stroke = color ?? "var(--gray)";
   const hasFromArrow = edge.fromEnd === "arrow";
   const hasToArrow = (edge.toEnd ?? "arrow") === "arrow";
-  const markerId = `arrow-${edge.id}`;
-  const markerStartId = `arrow-start-${edge.id}`;
+  const markerIds = markerPlan?.byEdge.get(edge);
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const midX = from.x + dx / 2;
@@ -12571,45 +12645,21 @@ function renderEdge(edge, nodeMap, anchorPlan) {
   const [fnx, fny] = sideNormal(edge.fromSide);
   const [tnx, tny] = sideNormal(edge.toSide);
   const pathD = `M ${from.x} ${from.y} C ${from.x + fnx} ${from.y + fny}, ${to.x + tnx} ${to.y + tny}, ${to.x} ${to.y}`;
-  return /* @__PURE__ */ u2("g", { class: "canvas-edge", "data-edge-id": edge.id, "data-from": edge.fromNode, "data-to": edge.toNode, children: [
-    /* @__PURE__ */ u2("defs", { children: [
-      hasToArrow && /* @__PURE__ */ u2(
-        "marker",
-        {
-          id: markerId,
-          viewBox: "0 0 10 10",
-          refX: "8.5",
-          refY: "5",
-          markerWidth: "5",
-          markerHeight: "5",
-          orient: "auto-start-reverse",
-          children: /* @__PURE__ */ u2("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: stroke })
-        }
-      ),
-      hasFromArrow && /* @__PURE__ */ u2(
-        "marker",
-        {
-          id: markerStartId,
-          viewBox: "0 0 10 10",
-          refX: "1.5",
-          refY: "5",
-          markerWidth: "5",
-          markerHeight: "5",
-          orient: "auto-start-reverse",
-          children: /* @__PURE__ */ u2("path", { d: "M 10 0 L 0 5 L 10 10 z", fill: stroke })
-        }
-      )
-    ] }),
+  return [
     /* @__PURE__ */ u2(
       "path",
       {
+        class: "canvas-edge",
+        "data-edge-id": edge.id,
+        "data-from": edge.fromNode,
+        "data-to": edge.toNode,
         d: pathD,
         fill: "none",
         stroke,
         "stroke-width": "1.75",
         "stroke-dasharray": edge.dashed ? "7 5" : void 0,
-        "marker-end": hasToArrow ? `url(#${markerId})` : void 0,
-        "marker-start": hasFromArrow ? `url(#${markerStartId})` : void 0
+        "marker-end": hasToArrow && markerIds?.end ? `url(#${markerIds.end})` : void 0,
+        "marker-start": hasFromArrow && markerIds?.start ? `url(#${markerIds.start})` : void 0
       }
     ),
     edge.label && /* @__PURE__ */ u2("g", { class: "canvas-edge-label-group", children: [
@@ -12626,7 +12676,7 @@ function renderEdge(edge, nodeMap, anchorPlan) {
       ),
       /* @__PURE__ */ u2("text", { x: midX, y: midY, class: "canvas-edge-label", "text-anchor": "middle", dy: "-8", children: edge.label })
     ] })
-  ] });
+  ];
 }
 function renderLegend(legend) {
   const swatchStyle = (color) => {
@@ -12690,6 +12740,8 @@ var CanvasBody_default = ((userOpts) => {
     const initialZoom = opts.initialZoom ?? 1;
     const minZoom = opts.minZoom ?? 0.1;
     const maxZoom = opts.maxZoom ?? 5;
+    const anchorPlan = computeAnchorPlan(edges, nodeMap);
+    const markerPlan = computeMarkerPlan(edges, nodeMap, slug2);
     return /* @__PURE__ */ u2("article", { class: "canvas-page popover-hint", children: /* @__PURE__ */ u2(
       "div",
       {
@@ -12843,10 +12895,10 @@ var CanvasBody_default = ((userOpts) => {
                 width: viewWidth,
                 height: viewHeight,
                 viewBox: `${minX - padding} ${minY - padding} ${viewWidth} ${viewHeight}`,
-                children: (() => {
-                  const anchorPlan = computeAnchorPlan(edges, nodeMap);
-                  return edges.map((edge) => renderEdge(edge, nodeMap, anchorPlan));
-                })()
+                children: [
+                  renderEdgeMarkers(markerPlan),
+                  edges.map((edge) => renderEdge(edge, nodeMap, anchorPlan, markerPlan))
+                ]
               }
             ),
             /* @__PURE__ */ u2(
