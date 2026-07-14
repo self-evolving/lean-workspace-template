@@ -13,7 +13,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawn } from "node:child_process"
-import { loadBlueprintConfig } from "./lib/blueprint-model.mjs"
+import { collectLeanDeclNames, loadBlueprintConfig } from "./lib/blueprint-model.mjs"
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const cfg = loadBlueprintConfig(ROOT)
@@ -26,7 +26,21 @@ if (!cfg.lakeRoots?.length) {
 }
 
 const out = path.relative(ROOT, cfg.dataPath)
+
+// Chapters may reference declarations that live OUTSIDE the lakeRoots walk —
+// theory upstreamed to mathlib (leanblueprint's \mathlibok) or code in a
+// dependency package. Hand the extractor the list of chapter-referenced
+// names; it resolves them from the compiled environment regardless of their
+// module of origin.
+const extraDeclNames = collectLeanDeclNames(cfg.blueprintDir)
+
 const args = ["exe", "blueprint-data", out, ...cfg.lakeRoots]
+if (extraDeclNames.length) {
+  const listPath = path.join(ROOT, ".quartz-cache", "blueprint-extra-decls.txt")
+  fs.mkdirSync(path.dirname(listPath), { recursive: true })
+  fs.writeFileSync(listPath, extraDeclNames.join("\n") + "\n")
+  args.push(`--decls=${path.relative(ROOT, listPath)}`)
+}
 console.log(`> lake ${args.join(" ")}`)
 
 // Whether the lakefile actually requires mathlib (comment lines don't count:
