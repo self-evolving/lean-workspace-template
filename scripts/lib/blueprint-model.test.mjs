@@ -7,9 +7,11 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
+  bakeSnippets,
   buildSourceModel,
   collectLeanDeclNames,
   computeStatusesAndEdges,
+  declSnippet,
   githubSourceUrl,
   loadBlueprintConfig,
   parsePlanTex,
@@ -329,4 +331,39 @@ test("collectLeanDeclNames: headings only, .lean chapters, part folders, fences 
   assert.deepEqual(collectLeanDeclNames(dir), ["A.a", "B.b", "C.c", "D.d", "E.e"])
   // missing directory degrades to an empty list, not a throw
   assert.deepEqual(collectLeanDeclNames(path.join(dir, "nope")), [])
+})
+
+test("bakeSnippets + declSnippet fallback: deploys render from baked text", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bp-bake-"))
+  fs.mkdirSync(path.join(dir, "Lib"))
+  fs.writeFileSync(
+    path.join(dir, "Lib", "Defs.lean"),
+    "import Foo\n\n/-- The answer. -/\n@[simp]\ndef answer : Nat := 42\n",
+  )
+  const data = {
+    decls: [
+      { name: "Lib.answer", file: "Lib/Defs.lean", startLine: 5, endLine: 5 },
+      { name: "Lib.ghost", file: "Lib/Gone.lean", startLine: 1, endLine: 1 },
+      { name: "Lib.noloc" },
+    ],
+  }
+  const { baked, missing } = bakeSnippets(data, [dir])
+  assert.equal(baked, 1)
+  assert.equal(missing, 1)
+  // baked snippet extends upward through the attribute and doc comment
+  assert.equal(data.decls[0].snippet.startLine, 3)
+  assert.match(data.decls[0].snippet.code, /^\/-- The answer\. -\/\n@\[simp\]\ndef answer/)
+  assert.equal(data.decls[1].snippet, undefined)
+
+  // site-build time, no checkout: declSnippet falls back to the baked text
+  const s = declSnippet(data.decls[0], [path.join(dir, "nonexistent")])
+  assert.equal(s.absPath, null)
+  assert.equal(s.baseDir, null)
+  assert.equal(s.startLine, 3)
+  assert.match(s.code, /def answer/)
+  // disk still wins when the file is present (fresh edits beat stale bakes)
+  const live = declSnippet(data.decls[0], [dir])
+  assert.ok(live.absPath)
+  // no baked text and no file -> null, as before
+  assert.equal(declSnippet(data.decls[1], [path.join(dir, "nonexistent")]), null)
 })

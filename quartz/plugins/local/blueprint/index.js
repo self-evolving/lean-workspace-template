@@ -162,17 +162,27 @@ function snippetRepoPath(cfg, snippet) {
     const rel = repoRelativePath(cfg.repoRoot, snippet.absPath)
     if (rel) return rel
   }
+  // Baked snippets (no local file at site-build time) carry no baseDir, and
+  // their file path is module-relative to whatever checkout produced them —
+  // a dependency package or mathlib, not necessarily cfg.repo. Return null so
+  // the header shows the location WITHOUT a link: pointing the workspace
+  // repo's URL at a dependency's path would 404 or, worse, resolve to an
+  // unrelated file. (Manifest-aware linking to the upstream repo at its
+  // pinned rev is the follow-up.)
+  if (!snippet.baseDir) return null
   return path.posix.join(path.basename(snippet.baseDir), snippet.file)
 }
 
 function sourceLocHtml(cfg, snippet) {
   const repoPath = snippetRepoPath(cfg, snippet)
-  const loc = `${repoPath}:${snippet.startLine}–${snippet.endLine}`
-  const href = githubSourceUrl(cfg.repo, repoPath, {
-    ref: sourceRef(),
-    startLine: snippet.startLine,
-    endLine: snippet.endLine,
-  })
+  const loc = `${repoPath ?? snippet.file}:${snippet.startLine}–${snippet.endLine}`
+  const href = repoPath
+    ? githubSourceUrl(cfg.repo, repoPath, {
+        ref: sourceRef(),
+        startLine: snippet.startLine,
+        endLine: snippet.endLine,
+      })
+    : null
   const locHtml = `<code>${escapeHtml(loc)}</code>`
   return href
     ? `<a class="bp-src-link" href="${href}" target="_blank" rel="noopener noreferrer">${locHtml}</a>`

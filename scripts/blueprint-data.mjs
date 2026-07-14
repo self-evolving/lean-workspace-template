@@ -13,7 +13,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawn } from "node:child_process"
-import { collectLeanDeclNames, loadBlueprintConfig } from "./lib/blueprint-model.mjs"
+import { bakeSnippets, collectLeanDeclNames, loadBlueprintConfig } from "./lib/blueprint-model.mjs"
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const cfg = loadBlueprintConfig(ROOT)
@@ -108,5 +108,28 @@ child.on("error", (err) => {
 })
 child.on("close", (code) => {
   clearInterval(heartbeat)
+  // Bake each declaration's source text into the data file while the checkout
+  // exists: deployed site builds have no .lake/, so without this, companion
+  // workspaces (code consumed as a Lake dependency) render no snippets at all.
+  if (code === 0) {
+    try {
+      const searchDirs = [...cfg.leanSrcDirs]
+      const pkgsDir = path.join(ROOT, ".lake", "packages")
+      if (fs.existsSync(pkgsDir))
+        for (const e of fs.readdirSync(pkgsDir)) searchDirs.push(path.join(pkgsDir, e))
+      const data = JSON.parse(fs.readFileSync(cfg.dataPath, "utf8"))
+      const { baked, missing } = bakeSnippets(data, searchDirs)
+      fs.writeFileSync(cfg.dataPath, JSON.stringify(data, null, 2) + "\n")
+      console.log(
+        `blueprint-data: baked ${baked} source snippet(s) into ${out}` +
+          (missing ? ` (${missing} without a resolvable source file)` : ""),
+      )
+    } catch (e) {
+      // fail loudly: exiting 0 here would let CI commit and deploy kernel
+      // data without the snippets this step exists to provide
+      console.error(`blueprint-data: snippet baking failed: ${e.message}`)
+      process.exit(1)
+    }
+  }
   process.exit(code ?? 1)
 })
