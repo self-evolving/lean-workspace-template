@@ -1,11 +1,22 @@
 import { computePosition, flip, inline, shift } from "@floating-ui/dom"
 import { normalizeRelativeURLs } from "../../util/path"
 import { fetchCanonical } from "./util"
+import { createPopoverClearScheduler } from "./popoverClearScheduler"
 
 const p = new DOMParser()
 let activeAnchor: HTMLAnchorElement | null = null
 let activeTargetKey: string | null = null
 let activeRequestId = 0
+
+const popoverCloseDelayMs = 300
+
+const popoverClearScheduler = createPopoverClearScheduler<HTMLAnchorElement, number>({
+  delayMs: popoverCloseDelayMs,
+  getSnapshot: () => ({ activeAnchor, activeTargetKey }),
+  clearActivePopover: () => clearActivePopover(),
+  setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+  clearTimeout: (timeout) => window.clearTimeout(timeout),
+})
 
 type PopoverTarget = {
   cacheKey: string
@@ -49,6 +60,14 @@ function deactivatePopovers() {
   allPopoverElements.forEach((popoverElement) => popoverElement.classList.remove("active-popover"))
 }
 
+function cancelClearActivePopover() {
+  popoverClearScheduler.cancel()
+}
+
+function scheduleClearActivePopover() {
+  popoverClearScheduler.schedule()
+}
+
 function scrollPopoverToHash(popoverElement: HTMLElement, hash: string) {
   if (hash === "") return
 
@@ -65,6 +84,7 @@ function scrollPopoverToHash(popoverElement: HTMLElement, hash: string) {
 
 async function mouseEnterHandler(this: HTMLAnchorElement, { clientX, clientY }: MouseEvent) {
   const link = this
+  cancelClearActivePopover()
   if (link.dataset.noPopover === "true") {
     clearActivePopover()
     return
@@ -93,6 +113,7 @@ async function mouseEnterHandler(this: HTMLAnchorElement, { clientX, clientY }: 
     if (!isCurrentHover()) return
 
     deactivatePopovers()
+    setupPopoverElement(popoverElement)
     popoverElement.classList.toggle("canvas-popover", target.isCanvasLink)
     popoverElement.classList.add("active-popover")
     setPosition(popoverElement as HTMLElement)
@@ -173,10 +194,25 @@ async function mouseEnterHandler(this: HTMLAnchorElement, { clientX, clientY }: 
 }
 
 function clearActivePopover() {
+  cancelClearActivePopover()
   activeAnchor = null
   activeTargetKey = null
   activeRequestId++
   deactivatePopovers()
+}
+
+function setupPopoverElement(popoverElement: HTMLElement) {
+  if (popoverElement.dataset.popoverBound === "true") return
+
+  popoverElement.dataset.popoverBound = "true"
+  popoverElement.addEventListener("mouseenter", cancelClearActivePopover)
+  popoverElement.addEventListener("mouseleave", scheduleClearActivePopover)
+  popoverElement.addEventListener("focusin", cancelClearActivePopover)
+  popoverElement.addEventListener("focusout", (event) => {
+    if (event.relatedTarget instanceof Node && popoverElement.contains(event.relatedTarget)) return
+
+    scheduleClearActivePopover()
+  })
 }
 
 function setupPopovers() {
@@ -185,10 +221,10 @@ function setupPopovers() {
     if (link.dataset.popoverBound === "true") continue
     link.dataset.popoverBound = "true"
     link.addEventListener("mouseenter", mouseEnterHandler)
-    link.addEventListener("mouseleave", clearActivePopover)
+    link.addEventListener("mouseleave", scheduleClearActivePopover)
     window.addCleanup(() => {
       link.removeEventListener("mouseenter", mouseEnterHandler)
-      link.removeEventListener("mouseleave", clearActivePopover)
+      link.removeEventListener("mouseleave", scheduleClearActivePopover)
       delete link.dataset.popoverBound
     })
   }
