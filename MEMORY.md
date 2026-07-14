@@ -6,4 +6,4 @@
 - TeX-plan imports intentionally resolve only line-leading \input and warn/skip missing files for partial-source imports.
 - Blueprints with \part{} outlines should use --part-folders; expect /blueprint/<part>/<chapter> URLs and one-level folder recursion.
 - Blueprint sync bakes declaration snippets into blueprint-data.json; deploy builds must render snippets without .lake checkouts.
-- Canvas plugin regressions are forced through scripts/run-tests.mjs when npm test receives explicit test files; keep new canvas suites listed there.
+- Quartz browser-script regressions are forced through scripts/run-tests.mjs when npm test receives explicit test files; list required suites there.
