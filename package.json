@@ -19,7 +19,7 @@
     "check": "tsc --noEmit && npx prettier . --check",
     "check:site": "npm run check && npm run build",
     "format": "npx prettier . --write",
-    "test": "tsx --test",
+    "test": "node scripts/run-tests.mjs",
     "test:blueprint": "node --test scripts/lib/blueprint-model.test.mjs scripts/lean-watch.test.mjs",
     "profile": "0x -D prof ./quartz/bootstrap-cli.mjs build --concurrency=1",
     "install-plugins": "npm run quartz -- plugin restore --enabled-only",
