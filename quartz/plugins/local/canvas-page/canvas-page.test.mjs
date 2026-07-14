@@ -100,6 +100,17 @@ test("omits marker definitions when no edge has an arrow", () => {
   assert.doesNotMatch(html, /marker-(?:start|end)=/);
 });
 
+test("renders blueprint card titles as non-navigation popover targets", () => {
+  const html = renderCanvas([]);
+
+  assert.match(
+    html,
+    /<span class="canvas-card-title" data-popover-href="[^"]*a" data-slug="a">A<\/span>/,
+  );
+  assert.doesNotMatch(html, /<a href="[^"]*" class="canvas-card-title/);
+  assert.match(html, /aria-label="Open A in sidebar preview"/);
+});
+
 test("shares the decorative sidebar icon through CSS", () => {
   const Component = CanvasBody();
   const html = render(
@@ -115,7 +126,7 @@ test("shares the decorative sidebar icon through CSS", () => {
 
   assert.equal(buttons.length, nodes.length);
   assert.ok(buttons.every((match) => match[1] === ""));
-  assert.match(html, /aria-label="Open A in sidebar"/);
+  assert.match(html, /aria-label="Open A in sidebar preview"/);
   assert.match(Component.css, /\.canvas-open-sidebar::before/);
   assert.match(Component.css, /mask-image: url\("data:image\/svg\+xml/);
 });

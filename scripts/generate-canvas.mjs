@@ -94,7 +94,7 @@ const legend = {
     { dashed: true, label: "uses (statement)" },
     { dashed: false, color: "6", label: "uses (proof)" },
   ],
-  note: "Statuses are computed from the Lean kernel (lake exe blueprint-data). Hover a card to highlight its direct dependencies; click a title to open it in its chapter.",
+  note: "Statuses are computed from the Lean kernel (lake exe blueprint-data). Hover a card to highlight its direct dependencies; click a card to select its neighborhood; use the preview button to open its chapter.",
 }
 
 fs.writeFileSync(OUT, JSON.stringify({ nodes, edges, legend }, null, 2) + "\n")

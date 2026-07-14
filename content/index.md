@@ -15,7 +15,8 @@ and everything it transitively depends on, compiles without `sorry`.
 ## Start here first
 
 - **[Dependency graph (canvas)](blueprint/dep-graph.canvas)** — pan/zoom; hover a card
-  to highlight its direct dependencies, click a title to jump to the item in its chapter.
+  to highlight its direct dependencies, click a card to select its neighborhood, and use
+  the preview button to open the item in its chapter.
 - [Demo proof](blueprint/) — one literate Lean chapter, one plan-stage markdown chapter.
 
 ## Using this as a template

@@ -4,13 +4,13 @@ import { fetchCanonical } from "./util"
 import { createPopoverClearScheduler } from "./popoverClearScheduler"
 
 const p = new DOMParser()
-let activeAnchor: HTMLAnchorElement | null = null
+let activeAnchor: HTMLElement | null = null
 let activeTargetKey: string | null = null
 let activeRequestId = 0
 
 const popoverCloseDelayMs = 300
 
-const popoverClearScheduler = createPopoverClearScheduler<HTMLAnchorElement, number>({
+const popoverClearScheduler = createPopoverClearScheduler<HTMLElement, number>({
   delayMs: popoverCloseDelayMs,
   getSnapshot: () => ({ activeAnchor, activeTargetKey }),
   clearActivePopover: () => clearActivePopover(),
@@ -38,8 +38,13 @@ function popoverIdFor(cacheKey: string) {
   return `popover-${encodeURIComponent(cacheKey)}`
 }
 
-function getPopoverTarget(link: HTMLAnchorElement): PopoverTarget {
-  const targetUrl = new URL(link.href)
+function popoverHrefFor(trigger: HTMLElement): string {
+  if (trigger instanceof HTMLAnchorElement) return trigger.href
+  return trigger.dataset.popoverHref ?? ""
+}
+
+function getPopoverTarget(trigger: HTMLElement): PopoverTarget {
+  const targetUrl = new URL(popoverHrefFor(trigger), window.location.href)
   const fetchUrl = new URL(targetUrl)
   const hash = decodeHash(targetUrl.hash)
   fetchUrl.hash = ""
@@ -51,7 +56,7 @@ function getPopoverTarget(link: HTMLAnchorElement): PopoverTarget {
     fetchUrl,
     hash,
     id: popoverIdFor(cacheKey),
-    isCanvasLink: link.closest(".canvas-page, .canvas-container") !== null,
+    isCanvasLink: trigger.closest(".canvas-page, .canvas-container") !== null,
   }
 }
 
@@ -82,10 +87,10 @@ function scrollPopoverToHash(popoverElement: HTMLElement, hash: string) {
   }
 }
 
-async function mouseEnterHandler(this: HTMLAnchorElement, { clientX, clientY }: MouseEvent) {
+async function mouseEnterHandler(this: HTMLElement, { clientX, clientY }: MouseEvent) {
   const link = this
   cancelClearActivePopover()
-  if (link.dataset.noPopover === "true") {
+  if (link.dataset.noPopover === "true" || popoverHrefFor(link) === "") {
     clearActivePopover()
     return
   }
@@ -216,7 +221,7 @@ function setupPopoverElement(popoverElement: HTMLElement) {
 }
 
 function setupPopovers() {
-  const links = [...document.querySelectorAll("a.internal")] as HTMLAnchorElement[]
+  const links = [...document.querySelectorAll<HTMLElement>("a.internal, [data-popover-href]")]
   for (const link of links) {
     if (link.dataset.popoverBound === "true") continue
     link.dataset.popoverBound = "true"

@@ -11377,13 +11377,11 @@ body.canvas-preview-resizing {
   text-decoration: none;
   overflow-wrap: anywhere;
   background: none;
+  cursor: default;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-.canvas-node-card .canvas-card-title:hover {
-  color: var(--secondary);
 }
 .canvas-open-sidebar {
   display: inline-flex;
@@ -12362,8 +12360,11 @@ function resolveEmbeddedHtml(fileSlug, canvasSlug, allFiles, subpath, visited) {
   return toHtml(rebased, { allowDangerousHtml: true });
 }
 function renderSidebarButton(href, title) {
-  const label = title ? `Open ${title} in sidebar` : "Open page in sidebar";
-  return /* @__PURE__ */ u2("button", { class: "canvas-open-sidebar", type: "button", "data-href": href, "data-title": title ?? "", "aria-label": label, title: "Open in sidebar" });
+  const label = title ? `Open ${title} in sidebar preview` : "Open page in sidebar preview";
+  return /* @__PURE__ */ u2("button", { class: "canvas-open-sidebar", type: "button", "data-href": href, "data-title": title ?? "", "aria-label": label, title: "Open preview" });
+}
+function renderCardTitle(href, title, fileSlug) {
+  return /* @__PURE__ */ u2("span", { class: "canvas-card-title", "data-popover-href": href, "data-slug": fileSlug, children: title });
 }
 function renderNode(node, renderedTexts, slug2, allFiles, visited) {
   const color = resolveColor(node.color);
@@ -12407,15 +12408,7 @@ function renderNode(node, renderedTexts, slug2, allFiles, visited) {
         return /* @__PURE__ */ u2("div", { class: "canvas-node canvas-node-file canvas-node-card", "data-node-id": node.id, style: styleStr, children: [
           node.bpKind ? /* @__PURE__ */ u2("div", { class: "canvas-card-kind", children: node.bpKind }) : null,
           /* @__PURE__ */ u2("div", { class: "canvas-card-title-row", children: [
-            /* @__PURE__ */ u2(
-              "a",
-              {
-                href: exactHref,
-                class: "canvas-card-title internal internal-link",
-                "data-slug": fileSlug,
-                children: title
-              }
-            ),
+            renderCardTitle(exactHref, title, fileSlug),
             renderSidebarButton(exactHref, title)
           ] }),
           node.bpStatus ? /* @__PURE__ */ u2("div", { class: "canvas-card-status", children: String(node.bpStatus) }) : null
@@ -12431,15 +12424,7 @@ function renderNode(node, renderedTexts, slug2, allFiles, visited) {
         return /* @__PURE__ */ u2("div", { class: "canvas-node canvas-node-file canvas-node-card", "data-node-id": node.id, style: styleStr, children: [
           kindLine ? /* @__PURE__ */ u2("div", { class: "canvas-card-kind", children: kindLine }) : null,
           /* @__PURE__ */ u2("div", { class: "canvas-card-title-row", children: [
-            /* @__PURE__ */ u2(
-              "a",
-              {
-                href: fileHref,
-                class: "canvas-card-title internal internal-link",
-                "data-slug": fileSlug,
-                children: nameLine
-              }
-            ),
+            renderCardTitle(fileHref, nameLine, fileSlug),
             renderSidebarButton(fileHref, nameLine)
           ] }),
           cardFm.status_short || cardFm.status ? /* @__PURE__ */ u2("div", { class: "canvas-card-status", children: String(cardFm.status_short ?? cardFm.status) }) : null
