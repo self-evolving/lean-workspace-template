@@ -103,7 +103,8 @@ All three belong to the entry inside `blueprints` — top-level keys other than
 ```
 
 For the dependency path, point `leanSrcDirs` at Lake's checkout of the
-package instead — e.g. `[".lake/packages/analysis"]`.
+package instead — e.g. `[".lake/packages/Analysis"]` (Lake names the
+checkout after the `[[require]]` `name`).
 
 ## 5. Replace the demo chapters
 
