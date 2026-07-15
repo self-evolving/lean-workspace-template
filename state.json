@@ -5,7 +5,7 @@
   "acpxSessionId": "019f635a-4b29-70b3-abfd-4ac48ba97fcb",
   "agentSessionId": "",
   "branch": "",
-  "status": "completed",
+  "status": "running",
   "resume_status": "not_attempted",
   "last_resume_error": "",
   "resumed_from_session_id": "",
@@ -17,9 +17,9 @@
   "last_bundle_restore_error": "",
   "forked_from_thread_key": "",
   "forked_from_acpx_session_id": "",
-  "last_run_url": "https://github.com/self-evolving/lean-workspace-template/actions/runs/29381251336",
+  "last_run_url": "https://github.com/self-evolving/lean-workspace-template/actions/runs/29393478065",
   "last_comment_url": "",
-  "attempt_count": 1,
+  "attempt_count": 2,
   "created_at": "2026-07-15T01:17:52.906Z",
-  "updated_at": "2026-07-15T06:12:05.806Z"
+  "updated_at": "2026-07-15T06:12:10.523Z"
 }
