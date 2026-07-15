@@ -9,8 +9,9 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
 
 1. **Blueprint title cards** (`renderNode`, file case): when the target page's
    frontmatter has `blueprint_label` and the node has no `subpath`, render a compact
-   card — kind/number line, page title as an internal link (hover popover gives the
-   full statement + proof), and a status pill — instead of embedding page HTML.
+   card — kind/number line, page title as a hover-only popover target (for the full
+   statement + proof and a floating `Open page` action), explicit sidebar preview
+   button, and a status pill — instead of embedding page HTML.
    New CSS classes: `.canvas-node-card`, `.canvas-card-kind`, `.canvas-card-title`,
    `.canvas-card-status`.
 
@@ -64,8 +65,8 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
 
 9. **Self-describing cards (blueprint-as-source)**: a file node may carry
    `bpTitle`/`bpKind`/`bpName`/`bpStatus` fields; the card renders from those
-   (no page lookup) and its title link appends the node's `subpath`, landing on
-   the item's heading anchor inside its chapter page.
+   (no page lookup) and its title popover target appends the node's `subpath`,
+   resolving to the item's heading anchor inside its chapter page.
 
 10. **Canvas afterBody slot** (`CanvasFrame`): the frame now renders the
     shared `afterBody` components after the canvas stage, so global page
@@ -117,3 +118,9 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     or cancellation), and all queued render/layout frames are canceled during
     Quartz navigation cleanup. Initial fitting and discrete controls remain
     synchronous.
+
+17. **Blueprint card title click model** (`renderCardTitle` + shared popover
+    script): blueprint card titles are rendered as non-navigation text with a
+    `data-popover-href` preview target, so clicking the title selects the card like
+    the rest of the node. Opening content is reserved for the explicit sidebar
+    preview button or the canvas popover's floating `Open page` action.

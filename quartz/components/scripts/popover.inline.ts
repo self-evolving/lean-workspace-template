@@ -2,58 +2,27 @@ import { computePosition, flip, inline, shift } from "@floating-ui/dom"
 import { normalizeRelativeURLs } from "../../util/path"
 import { fetchCanonical } from "./util"
 import { createPopoverClearScheduler } from "./popoverClearScheduler"
+import {
+  bindPopoverTriggers,
+  buildPopoverTarget,
+  shouldSkipPopoverTrigger,
+  syncCanvasPopoverAction,
+} from "./popoverActions"
 
 const p = new DOMParser()
-let activeAnchor: HTMLAnchorElement | null = null
+let activeAnchor: HTMLElement | null = null
 let activeTargetKey: string | null = null
 let activeRequestId = 0
 
 const popoverCloseDelayMs = 300
 
-const popoverClearScheduler = createPopoverClearScheduler<HTMLAnchorElement, number>({
+const popoverClearScheduler = createPopoverClearScheduler<HTMLElement, number>({
   delayMs: popoverCloseDelayMs,
   getSnapshot: () => ({ activeAnchor, activeTargetKey }),
   clearActivePopover: () => clearActivePopover(),
   setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
   clearTimeout: (timeout) => window.clearTimeout(timeout),
 })
-
-type PopoverTarget = {
-  cacheKey: string
-  fetchUrl: URL
-  hash: string
-  id: string
-  isCanvasLink: boolean
-}
-
-function decodeHash(hash: string) {
-  try {
-    return decodeURIComponent(hash)
-  } catch {
-    return hash
-  }
-}
-
-function popoverIdFor(cacheKey: string) {
-  return `popover-${encodeURIComponent(cacheKey)}`
-}
-
-function getPopoverTarget(link: HTMLAnchorElement): PopoverTarget {
-  const targetUrl = new URL(link.href)
-  const fetchUrl = new URL(targetUrl)
-  const hash = decodeHash(targetUrl.hash)
-  fetchUrl.hash = ""
-  fetchUrl.search = ""
-
-  const cacheKey = fetchUrl.toString()
-  return {
-    cacheKey,
-    fetchUrl,
-    hash,
-    id: popoverIdFor(cacheKey),
-    isCanvasLink: link.closest(".canvas-page, .canvas-container") !== null,
-  }
-}
 
 function deactivatePopovers() {
   const allPopoverElements = document.querySelectorAll(".popover")
@@ -82,15 +51,15 @@ function scrollPopoverToHash(popoverElement: HTMLElement, hash: string) {
   }
 }
 
-async function mouseEnterHandler(this: HTMLAnchorElement, { clientX, clientY }: MouseEvent) {
+async function mouseEnterHandler(this: HTMLElement, { clientX, clientY }: MouseEvent) {
   const link = this
   cancelClearActivePopover()
-  if (link.dataset.noPopover === "true") {
+  if (shouldSkipPopoverTrigger(link)) {
     clearActivePopover()
     return
   }
 
-  const target = getPopoverTarget(link)
+  const target = buildPopoverTarget(link, window.location.href)
   activeAnchor = link
   activeTargetKey = target.cacheKey
   const requestId = ++activeRequestId
@@ -115,6 +84,7 @@ async function mouseEnterHandler(this: HTMLAnchorElement, { clientX, clientY }: 
     deactivatePopovers()
     setupPopoverElement(popoverElement)
     popoverElement.classList.toggle("canvas-popover", target.isCanvasLink)
+    syncCanvasPopoverAction(popoverElement, target)
     popoverElement.classList.add("active-popover")
     setPosition(popoverElement as HTMLElement)
     scrollPopoverToHash(popoverElement, target.hash)
@@ -216,18 +186,7 @@ function setupPopoverElement(popoverElement: HTMLElement) {
 }
 
 function setupPopovers() {
-  const links = [...document.querySelectorAll("a.internal")] as HTMLAnchorElement[]
-  for (const link of links) {
-    if (link.dataset.popoverBound === "true") continue
-    link.dataset.popoverBound = "true"
-    link.addEventListener("mouseenter", mouseEnterHandler)
-    link.addEventListener("mouseleave", scheduleClearActivePopover)
-    window.addCleanup(() => {
-      link.removeEventListener("mouseenter", mouseEnterHandler)
-      link.removeEventListener("mouseleave", scheduleClearActivePopover)
-      delete link.dataset.popoverBound
-    })
-  }
+  bindPopoverTriggers(document, mouseEnterHandler, scheduleClearActivePopover, window.addCleanup)
 }
 
 document.addEventListener("nav", setupPopovers)

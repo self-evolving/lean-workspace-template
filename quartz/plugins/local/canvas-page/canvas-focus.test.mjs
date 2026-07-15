@@ -302,7 +302,7 @@ function element(classNames, { tag = "div", dataset = {}, text = "" } = {}) {
 
 function fileNode(id, label) {
   const node = element("canvas-node canvas-node-file", { dataset: { nodeId: id } });
-  const title = element("canvas-card-title", { tag: "a", text: label });
+  const title = element("canvas-card-title", { tag: "span", text: label });
   const firstChild = element("node-child");
   const secondChild = element("node-child");
   node.append(title, firstChild, secondChild);
@@ -423,6 +423,17 @@ test("selection and hover use separate focus renderers", () => {
   assert.match(script, /const applySelectionFocus =/);
   assert.doesNotMatch(script, /const applyFocus =/);
   assert.doesNotMatch(script, /kind === "selection"/);
+});
+
+test("clicking a blueprint card title selects the card", () => {
+  const harness = createHarness();
+  const { container, nodes } = harness;
+  const title = nodes.a.node.querySelector(".canvas-card-title");
+
+  container.dispatch("click", { target: title });
+
+  assert.equal(container.classList.contains("canvas-selecting"), true);
+  assert.equal(nodes.a.node.classList.contains("selection-focus"), true);
 });
 
 test("selection suppresses hover mutations and clearing restores the latent hover", () => {

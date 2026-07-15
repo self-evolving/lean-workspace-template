@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url)
 // discovery unchanged, but make every explicit test-file run include focused
 // browser-script regression suites that are otherwise easy to omit.
 const requiredQuartzTests = [
+  "quartz/components/scripts/popover.inline.test.mjs",
   "quartz/components/scripts/popoverClearScheduler.test.mjs",
   "quartz/plugins/local/canvas-page/canvas-page.test.mjs",
   "quartz/plugins/local/canvas-page/canvas-focus.test.mjs",
