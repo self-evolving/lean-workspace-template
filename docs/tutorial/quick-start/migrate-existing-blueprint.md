@@ -92,7 +92,9 @@ those steps.
 
 `\cite{}` commands come out in pandoc syntax (`[@key]`). To render them as
 linked references, enable the `citations` plugin in `quartz.config.yaml`
-(shipped disabled) and provide a `bibliography.bib`. Keys are sanitized for
+(shipped disabled) and provide a `bibliography.bib`; enabling
+`literature-citations` alongside it (also shipped disabled) adds reference
+popover cards and a styled References section. Keys are sanitized for
 pandoc — spaces and non-ascii letters are normalized (`first course` →
 `first-course`, `Beiglböck` → `Beiglbock`) — so apply the identical renames
 to the keys in your `.bib`.

@@ -50,9 +50,19 @@ Read from the upstream project:
    blueprint and formalization credits separately — carry both), plus the
    upstream `LICENSE`.
 
-## Adopt the code (companion mode)
+## Adopt the code
 
-The code stays upstream; this repo consumes it as a pinned dependency.
+First decide how the Lean code enters the workspace — the same fork as the
+external-project tutorial:
+
+- **Companion mode** (`[[require]]`, the code stays upstream): right when
+  this workspace reads, plans, and tracks statuses while the Lean lives in
+  its own repository. You cannot edit the Lean here.
+- **Copy-in mode** (`[[lean_lib]]`, the code lives in this repository):
+  required when `/implement` runs will edit or propose Lean code in this
+  workspace — proving items, filling sorries, formalizing.
+
+### Companion mode
 
 ```toml
 [[require]]
@@ -61,18 +71,39 @@ git = "https://github.com/owner/repo"
 rev = "<commit sha>"                 # a fork PR needs the FORK's url + branch
 ```
 
-Then, in order:
+- `blueprint.config.json`: `lakeRoots` = upstream root module(s),
+  `leanSrcDirs` = `[".lake/packages/<RequireName>"]`.
+- No `defaultTargets` (the dependency is not a root-package target); build
+  with `lake build +UpstreamRootModule`, one `+Module` per `lakeRoots` entry.
+
+### Copy-in mode
+
+Copy the source tree into the repo root (say `Analysis/` plus a root module
+`Analysis.lean` importing its files — keep upstream file headers and
+license), and declare it:
+
+```toml
+[[lean_lib]]
+name = "Analysis"
+```
+
+- `blueprint.config.json`: `lakeRoots = ["Analysis"]`,
+  `leanSrcDirs = ["Analysis"]`.
+- `defaultTargets = ["Analysis"]` so a plain `lake build` builds the code.
+- Carry over the upstream `lake-manifest.json` pins (especially mathlib's
+  rev) rather than letting `lake update` drift to newer ones.
+
+### Both modes, in order
 
 1. Copy the upstream `lean-toolchain` over this repo's.
-2. `lake update` — resolves the new require; when mathlib is in the tree its
-   post-update hook downloads the build cache here (a several-GB step).
+2. `lake update` — resolves the new require(s); when mathlib is in the tree
+   its post-update hook downloads the build cache here (a several-GB step).
 3. `lake exe cache get` — usually reports nothing to download; it is the
    guard for already-resolved clones. Never let mathlib compile from source.
-4. `blueprint.config.json`: `lakeRoots` = upstream root module(s),
-   `leanSrcDirs` = `[".lake/packages/<RequireName>"]`, `repo` = where
-   `discussion=` links should go.
+4. Set `repo` in `blueprint.config.json` to where `discussion=` links go.
 5. Remove the demo: both demo chapters, their `_meta.json` entries, the
-   `Blueprint` lib stanza / `defaultTargets` in `lakefile.toml`, AND the two
+   `Blueprint` lib stanza / `defaultTargets` in `lakefile.toml` (copy-in
+   mode replaces `defaultTargets` with the new library instead), AND the two
    machine files (`blueprint-data.json`, `dep-graph.canvas`) **and the
    dep-graph entry in `content/blueprint/_meta.json`** — nav validation
    fails on a dangling canvas entry. The entry returns after the first sync.

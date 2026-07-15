@@ -22,4 +22,6 @@ Skills available to Sepo skill runs in this Lean workspace:
 
   The setup script installs `agent-papers-cli` and smoke-checks `paper`,
   `paper-search`, and `paper-search env`; no API keys are required to
-  install.
+  install. At runtime, search and browse commands may need `SERPER_API_KEY`,
+  `S2_API_KEY`, or `JINA_API_KEY` in the environment (see the skill's own
+  notes).
