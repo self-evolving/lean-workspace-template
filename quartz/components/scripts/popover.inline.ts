@@ -98,10 +98,7 @@ function directChildWithClass(parent: HTMLElement, className: string): HTMLEleme
 }
 
 function syncCanvasPopoverAction(popoverElement: HTMLElement, target: PopoverTarget) {
-  const popoverInner = popoverElement.querySelector(".popover-inner") as HTMLElement | null
-  if (!popoverInner) return
-
-  let actionBar = directChildWithClass(popoverInner, "popover-canvas-actions")
+  let actionBar = directChildWithClass(popoverElement, "popover-canvas-actions")
   if (!target.isCanvasLink) {
     actionBar?.remove()
     return
@@ -110,7 +107,7 @@ function syncCanvasPopoverAction(popoverElement: HTMLElement, target: PopoverTar
   if (!actionBar) {
     actionBar = document.createElement("div")
     actionBar.className = "popover-canvas-actions"
-    popoverInner.appendChild(actionBar)
+    popoverElement.appendChild(actionBar)
   }
 
   let link = actionBar.querySelector("a.popover-open-page") as HTMLAnchorElement | null
