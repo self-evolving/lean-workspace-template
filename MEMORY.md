@@ -7,3 +7,4 @@
 - Blueprints with \part{} outlines should use --part-folders; expect /blueprint/<part>/<chapter> URLs and one-level folder recursion.
 - Blueprint sync bakes declaration snippets into blueprint-data.json; deploy builds must render snippets without .lake checkouts.
 - Quartz browser-script regressions are forced through scripts/run-tests.mjs when npm test receives explicit test files; list required suites there.
+- Blueprint canvas cards use selection as the primary click; page navigation belongs in explicit open/sidebar/popover actions.
