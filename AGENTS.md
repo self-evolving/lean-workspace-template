@@ -42,6 +42,11 @@ label to request a preview deployment for a non-agent PR.
 For Lean 4, Lake, mathlib, `.lean` files, blueprint proof review, or Lean
 workspace diagnostics, use the repository `lean4` skill under `.skills/lean4`.
 
+For migrating an existing Lean project or leanblueprint into this workspace
+(companion adoption, blueprint conversion, first sync), follow the repository
+`migrate-lean-project` skill under `.skills/migrate-lean-project` — it encodes
+the pitfalls the tutorials walk in prose.
+
 **Mathlib lookups on any route** — including plain `@sepo-agent` questions:
 never claim a declaration is absent from mathlib based on local search alone.
 Check the mathlib4 docs find endpoint
