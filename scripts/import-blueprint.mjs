@@ -1166,7 +1166,7 @@ function buildModelFromPlan() {
         { dashed: true, label: "\\uses on the statement" },
         { dashed: false, color: "6", label: "\\uses in the proof" },
       ],
-      note: "Statuses are computed from the Lean kernel (lake exe blueprint-data), not from \\leanok. Hover a card to highlight its direct dependencies; click a card to select its neighborhood; use the preview button to open its page.",
+      note: "Statuses are computed from the Lean kernel (lake exe blueprint-data), not from \\leanok. Hover a card to highlight its direct dependencies; click a card to select its neighborhood; open pages from the preview button or hover-card action.",
     },
     landingLines: (stats) => [
       `A live blueprint of the in-repo Lean project: **${stats.items} items** across **${stats.chapters} chapters**, with ${stats.edges} dependency edges. Statuses are computed from the Lean kernel — a node is dark green only when its proof *and everything it depends on* compile without \`sorry\`.`,
@@ -1296,7 +1296,7 @@ async function buildModelFromSite() {
         { dashed: true, label: "\\uses on the statement" },
         { dashed: false, color: "6", label: "\\uses in the proof" },
       ],
-      note: "Arrows point from prerequisite to dependent. Hover a card to highlight its direct dependencies; click a card to select its neighborhood; use the preview button to open its page.",
+      note: "Arrows point from prerequisite to dependent. Hover a card to highlight its direct dependencies; click a card to select its neighborhood; open pages from the preview button or hover-card action.",
     },
     landingLines: (stats) => [
       `A hosted, cross-linked edition of the [${SITE_LABEL}](${BASE}/index.html) — **${stats.items} items** (definitions, lemmas, theorems) across **${stats.chapters} chapters**, with ${stats.edges} dependency edges.`,

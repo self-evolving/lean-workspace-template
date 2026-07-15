@@ -24,6 +24,7 @@ type PopoverTarget = {
   hash: string
   id: string
   isCanvasLink: boolean
+  targetUrl: URL
 }
 
 function decodeHash(hash: string) {
@@ -57,6 +58,7 @@ function getPopoverTarget(trigger: HTMLElement): PopoverTarget {
     hash,
     id: popoverIdFor(cacheKey),
     isCanvasLink: trigger.closest(".canvas-page, .canvas-container") !== null,
+    targetUrl,
   }
 }
 
@@ -85,6 +87,44 @@ function scrollPopoverToHash(popoverElement: HTMLElement, hash: string) {
     // leave ~12px of buffer when scrolling to a heading
     popoverInner.scroll({ top: heading.offsetTop - 12, behavior: "instant" })
   }
+}
+
+function directChildWithClass(parent: HTMLElement, className: string): HTMLElement | null {
+  for (const child of parent.children) {
+    if (child instanceof HTMLElement && child.classList.contains(className)) return child
+  }
+
+  return null
+}
+
+function syncCanvasPopoverAction(popoverElement: HTMLElement, target: PopoverTarget) {
+  const popoverInner = popoverElement.querySelector(".popover-inner") as HTMLElement | null
+  if (!popoverInner) return
+
+  let actionBar = directChildWithClass(popoverInner, "popover-canvas-actions")
+  if (!target.isCanvasLink) {
+    actionBar?.remove()
+    return
+  }
+
+  if (!actionBar) {
+    actionBar = document.createElement("div")
+    actionBar.className = "popover-canvas-actions"
+    popoverInner.appendChild(actionBar)
+  }
+
+  let link = actionBar.querySelector("a.popover-open-page") as HTMLAnchorElement | null
+  if (!link) {
+    link = document.createElement("a")
+    link.className = "popover-open-page"
+    link.dataset.noPopover = "true"
+    link.textContent = "Open page"
+    link.title = "Open page"
+    link.setAttribute("aria-label", "Open page")
+    actionBar.appendChild(link)
+  }
+
+  link.href = target.targetUrl.toString()
 }
 
 async function mouseEnterHandler(this: HTMLElement, { clientX, clientY }: MouseEvent) {
@@ -120,6 +160,7 @@ async function mouseEnterHandler(this: HTMLElement, { clientX, clientY }: MouseE
     deactivatePopovers()
     setupPopoverElement(popoverElement)
     popoverElement.classList.toggle("canvas-popover", target.isCanvasLink)
+    syncCanvasPopoverAction(popoverElement, target)
     popoverElement.classList.add("active-popover")
     setPosition(popoverElement as HTMLElement)
     scrollPopoverToHash(popoverElement, target.hash)

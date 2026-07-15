@@ -99,6 +99,30 @@
     margin-top: 0;
   }
 
+  &.canvas-popover > .popover-inner > .popover-canvas-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.55rem 1rem 0.75rem;
+    border-top: 1px solid var(--lightgray);
+    background: color-mix(in srgb, var(--light) 94%, var(--secondary) 6%);
+  }
+
+  &.canvas-popover > .popover-inner > .popover-canvas-actions > .popover-open-page {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.8rem;
+    padding: 0 0.65rem;
+    border: 1px solid color-mix(in srgb, var(--secondary) 35%, var(--lightgray));
+    border-radius: 6px;
+    background: var(--light);
+    color: var(--secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+  }
+
   visibility: hidden;
   opacity: 0;
   transition:

@@ -10,8 +10,8 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
 1. **Blueprint title cards** (`renderNode`, file case): when the target page's
    frontmatter has `blueprint_label` and the node has no `subpath`, render a compact
    card — kind/number line, page title as a hover-only popover target (for the full
-   statement + proof), explicit sidebar preview button, and a status pill — instead
-   of embedding page HTML.
+   statement + proof and an `Open page` action), explicit sidebar preview button, and
+   a status pill — instead of embedding page HTML.
    New CSS classes: `.canvas-node-card`, `.canvas-card-kind`, `.canvas-card-title`,
    `.canvas-card-status`.
 
@@ -123,4 +123,4 @@ https://github.com/quartz-community/canvas-page at commit 2e6d05c.
     script): blueprint card titles are rendered as non-navigation text with a
     `data-popover-href` preview target, so clicking the title selects the card like
     the rest of the node. Opening content is reserved for the explicit sidebar
-    preview button.
+    preview button or the canvas popover's `Open page` action.
