@@ -7,11 +7,12 @@ Skills available to Sepo skill runs in this Lean workspace:
   workspace diagnostics (`doctor`). Includes the layered mathlib search
   protocol (`commands/learn.md`).
 - `migrate-lean-project`: the field-tested procedure for migrating an
-  existing Lean 4 project or leanblueprint into this workspace — companion
-  code adoption, native-chapter conversion via `npm run migrate:blueprint`,
-  first-sync expectations, citations, attribution, and verification. The
-  tutorials under `docs/tutorial/quick-start/` are the human-facing walk of
-  the same steps.
+  existing Lean 4 project or leanblueprint into this workspace — code
+  adoption as a companion dependency or copied in for local Lean edits,
+  native-chapter conversion via `npm run migrate:blueprint`, first-sync
+  expectations, citations, attribution, and verification. The tutorials
+  under `docs/tutorial/quick-start/` are the human-facing walk of the same
+  steps.
 - `deep-research`: broad investigations combining academic search, web
   browsing, repositories, docs/releases, datasets, and benchmarks. Install
   its pinned tooling first:

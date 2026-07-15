@@ -1,7 +1,7 @@
 ---
 name: migrate-lean-project
-description: Use when migrating an existing Lean 4 project or leanblueprint into this workspace — adopting the code as a companion, converting the blueprint to native chapters, or planning either. Encodes the field-tested procedure and its pitfalls; the tutorials are the human-facing walk of the same steps.
-argument-hint: "[repo-or-url] [--mode=companion|scrape-preview] [--blueprint=path-or-url]"
+description: Use when migrating an existing Lean 4 project or leanblueprint into this workspace — adopting the code as a companion dependency OR copying it in for local Lean edits, converting the blueprint to native chapters, or planning either. Encodes the field-tested procedure and its pitfalls; the tutorials are the human-facing walk of the same steps.
+argument-hint: "[repo-or-url] [--adopt=companion|copy-in] [--blueprint=native|scrape-preview]"
 allowed-tools: Bash, Read, Glob, Grep
 ---
 
@@ -72,7 +72,9 @@ rev = "<commit sha>"                 # a fork PR needs the FORK's url + branch
 ```
 
 - `blueprint.config.json`: `lakeRoots` = upstream root module(s),
-  `leanSrcDirs` = `[".lake/packages/<RequireName>"]`.
+  `leanSrcDirs` = `[".lake/packages/<RequireName>"]` (Lake names the checkout
+  after the require's `name`). Both keys belong INSIDE the `blueprints[]`
+  entry — top-level keys other than `contentRoot` are ignored.
 - No `defaultTargets` (the dependency is not a root-package target); build
   with `lake build +UpstreamRootModule`, one `+Module` per `lakeRoots` entry.
 
