@@ -2,6 +2,12 @@ import { computePosition, flip, inline, shift } from "@floating-ui/dom"
 import { normalizeRelativeURLs } from "../../util/path"
 import { fetchCanonical } from "./util"
 import { createPopoverClearScheduler } from "./popoverClearScheduler"
+import {
+  bindPopoverTriggers,
+  buildPopoverTarget,
+  shouldSkipPopoverTrigger,
+  syncCanvasPopoverAction,
+} from "./popoverActions"
 
 const p = new DOMParser()
 let activeAnchor: HTMLElement | null = null
@@ -17,50 +23,6 @@ const popoverClearScheduler = createPopoverClearScheduler<HTMLElement, number>({
   setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
   clearTimeout: (timeout) => window.clearTimeout(timeout),
 })
-
-type PopoverTarget = {
-  cacheKey: string
-  fetchUrl: URL
-  hash: string
-  id: string
-  isCanvasLink: boolean
-  targetUrl: URL
-}
-
-function decodeHash(hash: string) {
-  try {
-    return decodeURIComponent(hash)
-  } catch {
-    return hash
-  }
-}
-
-function popoverIdFor(cacheKey: string) {
-  return `popover-${encodeURIComponent(cacheKey)}`
-}
-
-function popoverHrefFor(trigger: HTMLElement): string {
-  if (trigger instanceof HTMLAnchorElement) return trigger.href
-  return trigger.dataset.popoverHref ?? ""
-}
-
-function getPopoverTarget(trigger: HTMLElement): PopoverTarget {
-  const targetUrl = new URL(popoverHrefFor(trigger), window.location.href)
-  const fetchUrl = new URL(targetUrl)
-  const hash = decodeHash(targetUrl.hash)
-  fetchUrl.hash = ""
-  fetchUrl.search = ""
-
-  const cacheKey = fetchUrl.toString()
-  return {
-    cacheKey,
-    fetchUrl,
-    hash,
-    id: popoverIdFor(cacheKey),
-    isCanvasLink: trigger.closest(".canvas-page, .canvas-container") !== null,
-    targetUrl,
-  }
-}
 
 function deactivatePopovers() {
   const allPopoverElements = document.querySelectorAll(".popover")
@@ -89,50 +51,15 @@ function scrollPopoverToHash(popoverElement: HTMLElement, hash: string) {
   }
 }
 
-function directChildWithClass(parent: HTMLElement, className: string): HTMLElement | null {
-  for (const child of parent.children) {
-    if (child instanceof HTMLElement && child.classList.contains(className)) return child
-  }
-
-  return null
-}
-
-function syncCanvasPopoverAction(popoverElement: HTMLElement, target: PopoverTarget) {
-  let actionBar = directChildWithClass(popoverElement, "popover-canvas-actions")
-  if (!target.isCanvasLink) {
-    actionBar?.remove()
-    return
-  }
-
-  if (!actionBar) {
-    actionBar = document.createElement("div")
-    actionBar.className = "popover-canvas-actions"
-    popoverElement.appendChild(actionBar)
-  }
-
-  let link = actionBar.querySelector("a.popover-open-page") as HTMLAnchorElement | null
-  if (!link) {
-    link = document.createElement("a")
-    link.className = "popover-open-page"
-    link.dataset.noPopover = "true"
-    link.textContent = "Open page"
-    link.title = "Open page"
-    link.setAttribute("aria-label", "Open page")
-    actionBar.appendChild(link)
-  }
-
-  link.href = target.targetUrl.toString()
-}
-
 async function mouseEnterHandler(this: HTMLElement, { clientX, clientY }: MouseEvent) {
   const link = this
   cancelClearActivePopover()
-  if (link.dataset.noPopover === "true" || popoverHrefFor(link) === "") {
+  if (shouldSkipPopoverTrigger(link)) {
     clearActivePopover()
     return
   }
 
-  const target = getPopoverTarget(link)
+  const target = buildPopoverTarget(link, window.location.href)
   activeAnchor = link
   activeTargetKey = target.cacheKey
   const requestId = ++activeRequestId
@@ -259,18 +186,7 @@ function setupPopoverElement(popoverElement: HTMLElement) {
 }
 
 function setupPopovers() {
-  const links = [...document.querySelectorAll<HTMLElement>("a.internal, [data-popover-href]")]
-  for (const link of links) {
-    if (link.dataset.popoverBound === "true") continue
-    link.dataset.popoverBound = "true"
-    link.addEventListener("mouseenter", mouseEnterHandler)
-    link.addEventListener("mouseleave", scheduleClearActivePopover)
-    window.addCleanup(() => {
-      link.removeEventListener("mouseenter", mouseEnterHandler)
-      link.removeEventListener("mouseleave", scheduleClearActivePopover)
-      delete link.dataset.popoverBound
-    })
-  }
+  bindPopoverTriggers(document, mouseEnterHandler, scheduleClearActivePopover, window.addCleanup)
 }
 
 document.addEventListener("nav", setupPopovers)
