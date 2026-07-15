@@ -2,7 +2,7 @@
 
 ## Durable
 - For real blueprint migrations, prefer npm run migrate:blueprint; it writes native chapters and leaves Lean/config/index/canvas adoption manual.
-- External Lean adoption: run lake update after adding [[require]], then cache get; delete demo blueprint data/canvas before first sync.
+- External Lean adoption: run lake update after [[require]]; run cache get only when mathlib is present; delete demo machine files before sync.
 - TeX-plan imports intentionally resolve only line-leading \input and warn/skip missing files for partial-source imports.
 - Blueprints with \part{} outlines should use --part-folders; expect /blueprint/<part>/<chapter> URLs and one-level folder recursion.
 - Blueprint sync bakes declaration snippets into blueprint-data.json; deploy builds must render snippets without .lake checkouts.
