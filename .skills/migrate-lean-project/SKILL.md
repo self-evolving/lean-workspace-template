@@ -100,7 +100,10 @@ name = "Analysis"
 1. Copy the upstream `lean-toolchain` over this repo's.
 2. `lake update` — resolves the new require(s); when mathlib is in the tree
    its post-update hook downloads the build cache here (a several-GB step).
-3. `lake exe cache get` — usually reports nothing to download; it is the
+3. `lake exe cache get` — **only when mathlib is in the dependency tree**
+   (direct or transitive): the `cache` executable ships with mathlib, and
+   without it the command fails with `unknown executable cache`. When it
+   applies, it usually reports nothing to download after step 2; it is the
    guard for already-resolved clones. Never let mathlib compile from source.
 4. Set `repo` in `blueprint.config.json` to where `discussion=` links go.
 5. Remove the demo: both demo chapters, their `_meta.json` entries, the
