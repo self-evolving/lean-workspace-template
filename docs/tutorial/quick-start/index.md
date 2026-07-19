@@ -12,7 +12,7 @@ clicks: AI agents that answer questions and implement changes right in your
 issues and PRs, a compile check for every change, and a (private) website for
 your project with a live preview per branch.
 
-![Set up the template from app.sepo.sh/new](onboarding.png)
+<video src="onboard-sepo.mp4" autoplay loop muted playsinline style="width: 100%; border-radius: 12px;" aria-label="Onboarding animation: in the Sepo Console, Add Sepo opens a guided setup — pick the Lean workspace template, name the repository, add a provider secret, and install the GitHub App"></video>
 
 > [!note]- Install it without Sepo support?
 > If you only want the minimal blueprint support, use
