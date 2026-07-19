@@ -77,7 +77,7 @@ jobs:
       should_run: ${{ steps.preflight.outputs.should_run }}
       skip_reason: ${{ steps.preflight.outputs.skip_reason }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.repository.default_branch }}
@@ -141,7 +141,7 @@ jobs:
     if: vars.AGENT_ENABLED != 'false' && needs.preflight.outputs.should_run == 'true'
     runs-on: ${{ fromJson(inputs.runs_on || vars.AGENT_RUNS_ON || '["ubuntu-latest"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.repository.default_branch }}
@@ -248,7 +248,7 @@ jobs:
             cp "${{ steps.review.outputs.session_log_file }}" "${{ runner.temp }}/events.jsonl"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ steps.review_result.outputs.has_response == 'true' }}
         with:
           name: rubrics-review-${{ inputs.pr_number }}

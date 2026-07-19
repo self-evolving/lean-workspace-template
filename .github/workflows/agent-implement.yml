@@ -134,7 +134,7 @@ jobs:
       IMPLEMENTATION_PROMPT: ${{ inputs.implementation_prompt || inputs.implementation_route || 'implement' }}
       MODEL_REASONING_EFFORT: xhigh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false

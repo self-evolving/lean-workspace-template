@@ -56,7 +56,7 @@ jobs:
       needs.agent.outputs.should_respond == 'true'
     runs-on: ${{ fromJson(vars.AGENT_RUNS_ON || '["ubuntu-latest"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           token: ${{ github.token }}
 
@@ -69,7 +69,7 @@ jobs:
           pat: ${{ secrets.AGENT_PAT }}
           fallback_token: ${{ github.token }}
 
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           github-token: ${{ steps.auth.outputs.token }}
           script: |
