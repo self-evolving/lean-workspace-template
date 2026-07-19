@@ -124,27 +124,73 @@ def projectUses (env : Environment) (roots : List Name) (extra : NameSet) (self 
         out := out.push u.toString
   return out
 
-/-- Transitive axiom collection by BFS over used constants (what `#print axioms`
-computes), implemented directly to stay on stable core APIs. -/
-partial def collectAxiomsFrom (env : Environment) (start : Name) : NameSet := Id.run do
-  let mut visited : NameSet := {}
-  let mut axioms : NameSet := {}
-  let mut worklist : Array Name := #[start]
-  while h : worklist.size > 0 do
-    let n := worklist[worklist.size - 1]
-    worklist := worklist.pop
-    if visited.contains n then
-      continue
-    visited := visited.insert n
-    match env.find? n with
-    | some ci =>
-      if ci matches .axiomInfo _ then
-        axioms := axioms.insert n
-      for u in usedConstantsOf ci do
-        unless visited.contains u do
-          worklist := worklist.push u
-    | none => pure ()
-  return axioms
+/-- Transitive axiom collection (what `#print axioms` computes), memoized
+across queries: per-constant axiom sets are bit masks over the environment's
+distinct axioms, cached in `AxState` so the shared closure (on mathlib-scale
+projects, nearly the whole environment) is traversed once — not once per
+declaration, which is quadratic and takes hours on large projects.
+
+The kernel constant graph is acyclic, so an iterative DFS with an explicit
+child cursor finishes every dependency before its dependents: at combine time
+each child's mask is already cached (`getD 0` only ever fires on self-edges
+and kernel-impossible back edges). -/
+structure AxState where
+  axIdx   : Std.HashMap Name Nat := {}
+  axNames : Array Name := #[]
+  cache   : Std.HashMap Name UInt64 := {}
+  visited : Std.HashMap Name Unit := {}
+
+def childrenOf (env : Environment) (n : Name) : Array Name :=
+  match env.find? n with
+  | some ci => usedConstantsOf ci
+  | none => #[]
+
+def maskFrom (env : Environment) (st0 : AxState) (root : Name) : AxState × UInt64 := Id.run do
+  let mut st := st0
+  if let some m := st.cache[root]? then
+    return (st, m)
+  let mut stack : Array (Name × Array Name × Nat) := #[(root, childrenOf env root, 0)]
+  st := { st with visited := st.visited.insert root () }
+  while _h : stack.size > 0 do
+    let (n, children, i) := stack[stack.size - 1]!
+    if i < children.size then
+      stack := stack.set! (stack.size - 1) (n, children, i + 1)
+      let c := children[i]!
+      if c != n && !st.visited.contains c then
+        st := { st with visited := st.visited.insert c () }
+        stack := stack.push (c, childrenOf env c, 0)
+    else
+      stack := stack.pop
+      let mut m : UInt64 := 0
+      match env.find? n with
+      | some ci =>
+        if ci matches .axiomInfo _ then
+          match st.axIdx[n]? with
+          | some j => m := m ||| ((1 : UInt64) <<< j.toUInt64)
+          | none =>
+            let j := st.axNames.size
+            if j ≥ 64 then
+              panic! "blueprint-data: more than 64 distinct axioms in the environment"
+            st := { st with axIdx := st.axIdx.insert n j, axNames := st.axNames.push n }
+            m := m ||| ((1 : UInt64) <<< j.toUInt64)
+        for u in children do
+          if u != n then
+            m := m ||| (st.cache[u]?.getD 0)
+      | none => pure ()
+      st := { st with cache := st.cache.insert n m }
+  return (st, st.cache[root]?.getD 0)
+
+def axiomNamesOfMask (st : AxState) (m : UInt64) : List String := Id.run do
+  let mut out : List String := []
+  for j in [0:st.axNames.size] do
+    if (m >>> j.toUInt64) &&& 1 == 1 then
+      out := out ++ [st.axNames[j]!.toString]
+  return out
+
+def maskHasSorry (st : AxState) (m : UInt64) : Bool :=
+  match st.axIdx[``sorryAx]? with
+  | some j => (m >>> j.toUInt64) &&& 1 == 1
+  | none => false
 
 def main (rawArgs : List String) : IO Unit := do
   let (flags, args) := rawArgs.partition (·.startsWith "--")
@@ -202,7 +248,8 @@ def main (rawArgs : List String) : IO Unit := do
   let total := sorted.size + externals.size
   let mut analyzed := 0
 
-  let emitDecl (n : Name) (ci : ConstantInfo) (external : Bool) : Json := Id.run do
+  let emitDecl (st : AxState) (mask : UInt64) (n : Name) (ci : ConstantInfo)
+      (external : Bool) : Json := Id.run do
     -- statement-level vs proof-level dependencies (type vs value constants);
     -- consumers infer dashed (statement) / solid (proof) edges from the split
     let typeUses := projectUses env roots extraSet n ci.type.getUsedConstants
@@ -210,8 +257,7 @@ def main (rawArgs : List String) : IO Unit := do
       | some v => projectUses env roots extraSet n v.getUsedConstants
       | none => #[]
     let projUses := typeUses ++ valueUses.filter (!typeUses.contains ·)
-    let axioms := collectAxiomsFrom env n
-    let axiomNames := axioms.toList.map toString
+    let axiomNames := axiomNamesOfMask st mask
     -- source location (module-relative path + 1-based line range), when recorded
     let locFields := match moduleFileOf env n, Lean.declRangeExt.find? env n with
       | some file, some dr => [
@@ -228,18 +274,24 @@ def main (rawArgs : List String) : IO Unit := do
       ("typeUses", toJson typeUses),
       ("valueUses", toJson valueUses),
       ("axioms", toJson axiomNames),
-      ("hasSorry", Json.bool (axioms.contains ``sorryAx))
+      ("hasSorry", Json.bool (maskHasSorry st mask))
     ] ++ locFields ++ originFields)
 
+  let mut axSt : AxState := {}
   for (n, ci) in sorted do
-    decls := decls.push (emitDecl n ci false)
+    let (st', mask) := maskFrom env axSt n
+    axSt := st'
+    decls := decls.push (emitDecl axSt mask n ci false)
     analyzed := analyzed + 1
     if analyzed % 200 == 0 then
       IO.eprintln s!"blueprint-data: analyzed {analyzed}/{total} declarations"
 
   for n in externals do
     match env.find? n with
-    | some ci => decls := decls.push (emitDecl n ci true)
+    | some ci =>
+      let (st', mask) := maskFrom env axSt n
+      axSt := st'
+      decls := decls.push (emitDecl axSt mask n ci true)
     | none => missing := missing.push n
     analyzed := analyzed + 1
     if analyzed % 200 == 0 then
