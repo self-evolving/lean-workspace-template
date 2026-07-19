@@ -32,7 +32,7 @@ jobs:
       dependency_value: ${{ steps.gate.outputs.dependency_value }}
       self_value: ${{ steps.gate.outputs.self_value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -58,7 +58,7 @@ jobs:
     env:
       MEMORY_REF: ${{ inputs.memory_ref || vars.AGENT_MEMORY_REF || 'agent/memory' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false

@@ -61,7 +61,7 @@ jobs:
       existing_pr_number: ${{ steps.pending.outputs.pr_number }}
       existing_pr_branch: ${{ steps.pending.outputs.branch }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -130,7 +130,7 @@ jobs:
     if: vars.AGENT_ENABLED != 'false' && needs.gate.outputs.skip != 'true'
     runs-on: ${{ fromJson(vars.AGENT_RUNS_ON || '["ubuntu-latest"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
