@@ -41,23 +41,45 @@ const MAPPED_KINDS = { remark: "definition", example: "definition" }
 // ---------------------------------------------------------------- tex -> markdown
 const DISPLAY_ENVS = ["equation", "align", "alignat", "gather", "multline", "eqnarray"]
 
+// A display-math body ready for remark-math: blank lines inside a $$ block
+// end the paragraph and break the math span, so collapse them away.
+const displayBody = (b) => b.replace(/\n[ \t]*\n+/g, "\n").trim()
+
 function texToMd(tex, ctx) {
   if (!tex) return ""
   let s = tex
+  // verbatim blocks first — their contents must not reach the math/format
+  // passes below
+  s = s.replace(/\\begin\{verbatim\}\n?([\s\S]*?)\\end\{verbatim\}/g, (_, b) => {
+    const lines = b.split("\n").map((l) => l.trim())
+    return "\n```\n" + lines.filter(Boolean).join("\n") + "\n```\n"
+  })
   // display math already written as $$..$$: normalize the delimiters onto
   // their own lines — remark-math rejects a closing $$ preceded by content on
   // the same line, and the unclosed block then swallows the rest of the page
-  s = s.replace(/\$\$([\s\S]*?)\$\$/g, (_, b) => `\n$$\n${b.trim()}\n$$\n`)
+  s = s.replace(/\$\$([\s\S]*?)\$\$/g, (_, b) => `\n$$\n${displayBody(b)}\n$$\n`)
   // display math: \[..\] and top-level AMS environments -> $$..$$ (normalized
-  // to the starred forms — KaTeX numbers nothing here anyway)
-  s = s.replace(/\\\[([\s\S]*?)\\\]/g, (_, b) => `\n$$\n${b.trim()}\n$$\n`)
+  // to KaTeX-safe forms — KaTeX numbers nothing here anyway)
+  s = s.replace(/\\\[([\s\S]*?)\\\]/g, (_, b) => `\n$$\n${displayBody(b)}\n$$\n`)
   // inline math: \(..\) -> $..$
   s = s.replace(/\\\(([\s\S]*?)\\\)/g, (_, b) => `$${collapse(b)}$`)
   for (const env of DISPLAY_ENVS) {
     const re = new RegExp(`\\\\begin\\{${env}(\\*?)\\}([\\s\\S]*?)\\\\end\\{${env}\\1\\}`, "g")
     s = s.replace(re, (_, star, body) => {
-      const name = `${env === "eqnarray" ? "align" : env}${star || "*"}`
-      return `\n$$\n\\begin{${name}}${body}\\end{${name}}\n$$\n`
+      // Map onto the environments KaTeX supports inside display math:
+      // aligned for the &-aligned family, gathered for the centered family,
+      // and no environment at all for equation. Architect statements (Lean
+      // doc-comments) use these environments freely.
+      let inner = body
+      if (env === "alignat") inner = inner.replace(/^\s*\{\d+\}/, "")
+      inner = displayBody(inner)
+      const wrapped =
+        env === "equation"
+          ? inner
+          : env === "gather" || env === "multline"
+            ? `\\begin{gathered}\n${inner}\n\\end{gathered}`
+            : `\\begin{aligned}\n${inner}\n\\end{aligned}`
+      return `\n$$\n${wrapped}\n$$\n`
     })
   }
   // lists
@@ -110,6 +132,15 @@ function texToMd(tex, ctx) {
     .replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}/g, "_(figure: $1)_")
   // ~ is a non-breaking space (KaTeX renders it as a space inside math too)
   s = s.replace(/(?<!\\)~/g, " ")
+  // \url after the ~ pass: URL tildes are written $\sim$ in LaTeX and must
+  // come out as literal ~ in the autolink, not as spaces
+  s = s.replace(/\\url\{([^}]*)\}/g, (_, u) => {
+    const clean = u
+      .replace(/\\_/g, "_")
+      .replace(/\$\\sim\$/g, "~")
+      .replace(/\\([%#&])/g, "$1")
+    return `<${clean}>`
+  })
   return s.replace(/\n{3,}/g, "\n\n").trim()
 }
 

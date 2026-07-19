@@ -16,6 +16,7 @@ import {
   loadBlueprintConfig,
   parsePlanTex,
   repoRelativePath,
+  stripBlueprintAttributes,
 } from "./blueprint-model.mjs"
 import { weaveLeanToMd } from "./lean-weave.mjs"
 import {
@@ -366,4 +367,39 @@ test("bakeSnippets + declSnippet fallback: deploys render from baked text", () =
   assert.ok(live.absPath)
   // no baked text and no file -> null, as before
   assert.equal(declSnippet(data.decls[1], [path.join(dir, "nonexistent")]), null)
+})
+
+test("stripBlueprintAttributes: removes blueprint attrs, keeps co-attributes", () => {
+  const real = [
+    "@[blueprint",
+    '  "first-gap-def"',
+    '  (title := "First prime gap")',
+    "  (statement := /--",
+    "  $P(g)$ is the first prime $p_n$ for which the prime gap",
+    "  $p_{n+1}-p_n$ is equal to $g$, or $0$ if no such gap",
+    "  exists. -/)]",
+    "noncomputable def first_gap (g : ℕ) : ℕ :=",
+    "  if h : ∃ n, nth_prime_gap n = g then",
+    "    nth_prime (Nat.find h)",
+    "  else 0",
+  ].join("\n")
+  const stripped = stripBlueprintAttributes(real)
+  assert.equal(stripped.split("\n")[0], "noncomputable def first_gap (g : ℕ) : ℕ :=")
+  assert.ok(!stripped.includes("@[blueprint"))
+
+  // co-attributes survive
+  assert.equal(
+    stripBlueprintAttributes('@[simp, blueprint "x" (title := "T")]\ndef foo := 1'),
+    "@[simp]\ndef foo := 1",
+  )
+  // brackets inside the statement doc-comment do not truncate the scan
+  assert.equal(
+    stripBlueprintAttributes(
+      '@[blueprint "y"\n  (statement := /-- interval $[0,1]$ and list [a, b] -/)]\ntheorem bar : True := trivial',
+    ),
+    "theorem bar : True := trivial",
+  )
+  // regular doc comments and unannotated code pass through unchanged
+  const plain = "/-- real docstring -/\ndef plain := 2"
+  assert.equal(stripBlueprintAttributes(plain), plain)
 })
