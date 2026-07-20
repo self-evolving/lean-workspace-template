@@ -87,7 +87,10 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
           GENERATED="$BP_CONTENT_ROOT/$BP_ROOT/blueprint-data.json $BP_CONTENT_ROOT/$BP_ROOT/dep-graph.canvas"
-          if git diff --quiet -- $GENERATED; then
+          # status --porcelain (not diff --quiet): a freshly created data file is
+          # untracked — e.g. right after a migration removed the demo's — and
+          # plain diff reports it as "unchanged", silently discarding the data.
+          if [ -z "$(git status --porcelain -- $GENERATED)" ]; then
             echo "blueprint data unchanged"
             exit 0
           fi
