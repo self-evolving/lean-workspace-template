@@ -761,6 +761,21 @@ export function stripBlueprintAttributes(code) {
   return out
 }
 
+// Strip attributes and keep the reported start line aligned with the first
+// line the snippet actually shows (the source link would otherwise deep-link
+// a few lines above the rendered code).
+function strippedSnippet(code, startLine) {
+  const stripped = stripBlueprintAttributes(code)
+  if (stripped === code) return { code, startLine }
+  const first = String(stripped).split("\n", 1)[0]
+  let delta = 0
+  if (first.trim()) {
+    const idx = String(code).split("\n").indexOf(first)
+    if (idx > 0) delta = idx
+  }
+  return { code: stripped, startLine: startLine + delta }
+}
+
 // Slice a declaration's source from disk (file resolved over srcDirs), extending
 // upward through a contiguous doc comment and attribute lines. When the file is
 // absent (deployed site builds have no .lake checkout), falls back to the
@@ -779,13 +794,14 @@ export function declSnippet(decl, srcDirs) {
   }
   if (!abs) {
     if (decl.snippet?.code) {
+      const s = strippedSnippet(decl.snippet.code, decl.snippet.startLine ?? decl.startLine)
       return {
         file: decl.file,
         absPath: null,
         baseDir: null,
-        startLine: decl.snippet.startLine ?? decl.startLine,
+        startLine: s.startLine,
         endLine: decl.endLine,
-        code: stripBlueprintAttributes(decl.snippet.code),
+        code: s.code,
       }
     }
     return null
@@ -808,13 +824,14 @@ export function declSnippet(decl, srcDirs) {
     }
     break
   }
+  const s = strippedSnippet(dedentLines(lines.slice(start, decl.endLine)), start + 1)
   return {
     file: decl.file,
     absPath: abs,
     baseDir,
-    startLine: start + 1,
+    startLine: s.startLine,
     endLine: decl.endLine,
-    code: stripBlueprintAttributes(dedentLines(lines.slice(start, decl.endLine))),
+    code: s.code,
   }
 }
 

@@ -331,6 +331,7 @@ export function buildNativeChapters(tex, opts = {}) {
       if (it.leanNames.length) attrs.push(`lean="${it.leanNames.join(", ")}"`)
       const uses = filterUses(it.uses, it.label)
       if (uses.length) attrs.push(`uses="${uses.join(", ")}"`)
+      if (it.discussion != null) attrs.push(`discussion="${it.discussion}"`)
       lines.push(
         `## ${kind[0].toUpperCase() + kind.slice(1)}: ${it.displayName} {${attrs.join(" ")}}`,
         "",

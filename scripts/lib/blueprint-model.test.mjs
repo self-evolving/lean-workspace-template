@@ -403,3 +403,22 @@ test("stripBlueprintAttributes: removes blueprint attrs, keeps co-attributes", (
   const plain = "/-- real docstring -/\ndef plain := 2"
   assert.equal(stripBlueprintAttributes(plain), plain)
 })
+
+test("stripBlueprintAttributes: idempotent; declSnippet aligns startLine", () => {
+  const code = '@[blueprint "l" (statement := /-- s -/)]\ntheorem t : True := trivial'
+  const once = stripBlueprintAttributes(code)
+  assert.equal(stripBlueprintAttributes(once), once)
+
+  const snip = declSnippet(
+    {
+      file: "Pkg/A.lean",
+      startLine: 10,
+      endLine: 12,
+      snippet: { startLine: 10, code },
+    },
+    [],
+  )
+  assert.equal(snip.code, "theorem t : True := trivial")
+  // the attribute occupied one line; the reported start advances past it
+  assert.equal(snip.startLine, 11)
+})

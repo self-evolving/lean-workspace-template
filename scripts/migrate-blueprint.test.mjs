@@ -250,3 +250,17 @@ after.
   // \url became an autolink with unescaped _, ~, %
   assert.match(ch, /<https:\/\/example\.org\/~user\/a_b%20c>/)
 })
+
+test("texToMd: \\discussion becomes a heading attribute", () => {
+  const plan = `
+\\chapter{Disc}
+\\begin{lemma}\\label{lem:disc}\\lean{P.disc}
+\\discussion{901}
+Statement text.
+\\end{lemma}
+`
+  const { files } = buildNativeChapters(plan, { label: "Disc test" })
+  const ch = files[0].content
+  assert.match(ch, /## Lemma: disc \{#lem:disc lean="P\.disc" discussion="901"\}/)
+  assert.ok(!ch.includes("\\discussion"))
+})
