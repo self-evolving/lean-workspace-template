@@ -48,11 +48,31 @@ const displayBody = (b) => b.replace(/\n[ \t]*\n+/g, "\n").trim()
 function texToMd(tex, ctx) {
   if (!tex) return ""
   let s = tex
-  // verbatim blocks first — their contents must not reach the math/format
-  // passes below
+  // Literal content is stashed behind placeholder tokens before any rewrite
+  // pass and restored verbatim at the very end — nothing between may alter it.
+  const stash = []
+  const stashToken = (md) => {
+    stash.push(md)
+    return `\u0000BP${stash.length - 1}\u0000`
+  }
+  // verbatim blocks: keep the body literal (blank lines, TeX-looking text),
+  // dropping only surrounding blank lines and the common indent
   s = s.replace(/\\begin\{verbatim\}\n?([\s\S]*?)\\end\{verbatim\}/g, (_, b) => {
-    const lines = b.split("\n").map((l) => l.trim())
-    return "\n```\n" + lines.filter(Boolean).join("\n") + "\n```\n"
+    const lines = b.replace(/\s+$/, "").split("\n")
+    while (lines.length && !lines[0].trim()) lines.shift()
+    const indents = lines.filter((l) => l.trim()).map((l) => l.match(/^[ \t]*/)[0].length)
+    const cut = indents.length ? Math.min(...indents) : 0
+    const body = lines.map((l) => l.slice(cut)).join("\n")
+    return `\n${stashToken("```\n" + body + "\n```")}\n`
+  })
+  // \url groups: a URL's characters (~, _, %) must not reach the prose
+  // passes (the generic ~ -> space rewrite in particular)
+  s = s.replace(/\\url\{([^}]*)\}/g, (_, u) => {
+    const clean = u
+      .replace(/\\_/g, "_")
+      .replace(/\$\\sim\$/g, "~")
+      .replace(/\\([%#&])/g, "$1")
+    return stashToken(`<${clean}>`)
   })
   // display math already written as $$..$$: normalize the delimiters onto
   // their own lines — remark-math rejects a closing $$ preceded by content on
@@ -130,18 +150,13 @@ function texToMd(tex, ctx) {
     )
     .replace(/\\[vh]space\*?\{[^}]*\}/g, "")
     .replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}/g, "_(figure: $1)_")
-  // ~ is a non-breaking space (KaTeX renders it as a space inside math too)
+  // ~ is a non-breaking space (KaTeX renders it as a space inside math too);
+  // \url and verbatim content is already stashed and unaffected
   s = s.replace(/(?<!\\)~/g, " ")
-  // \url after the ~ pass: URL tildes are written $\sim$ in LaTeX and must
-  // come out as literal ~ in the autolink, not as spaces
-  s = s.replace(/\\url\{([^}]*)\}/g, (_, u) => {
-    const clean = u
-      .replace(/\\_/g, "_")
-      .replace(/\$\\sim\$/g, "~")
-      .replace(/\\([%#&])/g, "$1")
-    return `<${clean}>`
-  })
-  return s.replace(/\n{3,}/g, "\n\n").trim()
+  s = s.replace(/\n{3,}/g, "\n\n").trim()
+  // restore literal stashes last, after every rewrite and the newline collapse
+  s = s.replace(/\u0000BP(\d+)\u0000/g, (_, i) => stash[Number(i)])
+  return s
 }
 
 // Sub-chapter headers inside gap prose become bold paragraphs (## is reserved

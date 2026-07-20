@@ -264,3 +264,27 @@ Statement text.
   assert.match(ch, /## Lemma: disc \{#lem:disc lean="P\.disc" discussion="901"\}/)
   assert.ok(!ch.includes("\\discussion"))
 })
+
+test("texToMd: verbatim bodies and \\url groups are literal-preserved", () => {
+  const plan = `
+\\chapter{Literal}
+\\begin{lemma}\\label{lem:lit}\\lean{P.lit}
+See \\url{https://example.org/~user/x} and \\url{https://a.b/$\\sim$c/d\\_e}.
+\\begin{verbatim}
+  keep \\emph{literal} ~ and --dashes
+
+    indented $x$ line
+\\end{verbatim}
+after.
+\\end{lemma}
+`
+  const { files } = buildNativeChapters(plan, { label: "Literal test" })
+  const ch = files[0].content
+  // direct ~ inside \url survives the generic ~ -> space pass
+  assert.match(ch, /<https:\/\/example\.org\/~user\/x>/)
+  // $\sim$ and \_ spellings unescape too
+  assert.match(ch, /<https:\/\/a\.b\/~c\/d_e>/)
+  // verbatim body is byte-literal: no emph rewrite, ~ kept, blank line kept,
+  // relative indentation kept (only the common indent is removed)
+  assert.match(ch, /```\nkeep \\emph\{literal\} ~ and --dashes\n\n {2}indented \$x\$ line\n```/)
+})
