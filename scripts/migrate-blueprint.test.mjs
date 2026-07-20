@@ -200,3 +200,91 @@ test("inline \\(...\\) math converts to $...$", () => {
   assert.match(files[0].content, /Let \$x \\in \\mathbb\{R\}\$ be given\./)
   assert.doesNotMatch(files[0].content, /\\\(/)
 })
+
+test("texToMd: KaTeX-safe display environments, verbatim, url", () => {
+  const plan = `
+\\chapter{Envs}
+\\begin{lemma}\\label{lem:envs}\\lean{P.envs}
+Statement with a link \\url{https://example.org/$\\sim$user/a\\_b\\%20c} and
+\\begin{align*}
+  a &= b \\\\
+
+  &= c
+  \\end{align*}
+and
+\\begin{equation*}
+  d = e
+\\end{equation*}
+and
+\\begin{alignat}{2}
+  f &= g \\\\
+  &= h
+\\end{alignat}
+and
+\\begin{multline*}
+  i + j \\\\
+  + k
+\\end{multline*}
+An application of
+    \\begin{verbatim}
+      Complex.someLemma.
+    \\end{verbatim}
+after.
+\\end{lemma}
+`
+  const { files } = buildNativeChapters(plan, { label: "Env test" })
+  const ch = files[0].content
+  // align* -> aligned inside $$, blank line inside the body removed
+  assert.match(ch, /\$\$\n\\begin\{aligned\}\n\s*a &= b \\\\\n\s*&= c\n\\end\{aligned\}\n\$\$/)
+  // equation* -> bare $$ body
+  assert.match(ch, /\$\$\nd = e\n\$\$/)
+  // alignat drops its column argument and maps to aligned
+  assert.match(ch, /\\begin\{aligned\}\n\s*f &= g/)
+  assert.ok(!ch.includes("{2}"))
+  // multline* -> gathered
+  assert.match(ch, /\\begin\{gathered\}\n\s*i \+ j/)
+  // no raw LaTeX environments survive
+  assert.ok(!/\\begin\{(equation|align|alignat|multline|verbatim)\*?\}/.test(ch))
+  // verbatim became a fenced code block
+  assert.match(ch, /```\nComplex\.someLemma\.\n```/)
+  // \url became an autolink with unescaped _, ~, %
+  assert.match(ch, /<https:\/\/example\.org\/~user\/a_b%20c>/)
+})
+
+test("texToMd: \\discussion becomes a heading attribute", () => {
+  const plan = `
+\\chapter{Disc}
+\\begin{lemma}\\label{lem:disc}\\lean{P.disc}
+\\discussion{901}
+Statement text.
+\\end{lemma}
+`
+  const { files } = buildNativeChapters(plan, { label: "Disc test" })
+  const ch = files[0].content
+  assert.match(ch, /## Lemma: disc \{#lem:disc lean="P\.disc" discussion="901"\}/)
+  assert.ok(!ch.includes("\\discussion"))
+})
+
+test("texToMd: verbatim bodies and \\url groups are literal-preserved", () => {
+  const plan = `
+\\chapter{Literal}
+\\begin{lemma}\\label{lem:lit}\\lean{P.lit}
+See \\url{https://example.org/~user/x} and \\url{https://a.b/$\\sim$c/d\\_e}.
+\\begin{verbatim}
+  keep \\emph{literal} ~ and --dashes
+
+    indented $x$ line
+\\end{verbatim}
+after.
+\\end{lemma}
+`
+  const { files } = buildNativeChapters(plan, { label: "Literal test" })
+  const ch = files[0].content
+  // direct ~ inside \url survives the generic ~ -> space pass
+  assert.match(ch, /<https:\/\/example\.org\/~user\/x>/)
+  // $\sim$ and \_ spellings unescape too
+  assert.match(ch, /<https:\/\/a\.b\/~c\/d_e>/)
+  // verbatim body is byte-literal: no emph rewrite, ~ kept, blank line kept,
+  // relative indentation kept (only the common indent is removed)
+  assert.match(ch, /```\nkeep \\emph\{literal\} ~ and --dashes\n\n {2}indented \$x\$ line\n```/)
+})

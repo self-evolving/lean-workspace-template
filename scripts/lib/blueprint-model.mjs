@@ -630,6 +630,152 @@ export const dedentLines = (lines) => {
     .replace(/^\n+|\n+$/g, "")
 }
 
+// LeanArchitect projects annotate declarations with `@[blueprint ...]`
+// attributes that carry the node's label, title, statement, and proof text —
+// prose the blueprint page already renders. Strip the `blueprint` entry from
+// attribute groups in a displayed snippet (keeping co-attributes such as
+// `@[simp, blueprint ...]`), so the code block shows the declaration itself
+// rather than a second copy of the statement.
+export function stripBlueprintAttributes(code) {
+  if (!code || !String(code).includes("@[")) return code
+  const s = String(code)
+  const n = s.length
+  const skipString = (j) => {
+    j++
+    while (j < n) {
+      if (s[j] === "\\") j += 2
+      else if (s[j] === '"') return j + 1
+      else j++
+    }
+    return j
+  }
+  const skipBlockComment = (j) => {
+    // Lean block comments (incl. doc comments) nest.
+    let depth = 0
+    while (j < n) {
+      if (s.startsWith("/-", j)) {
+        depth++
+        j += 2
+      } else if (s.startsWith("-/", j)) {
+        depth--
+        j += 2
+        if (depth === 0) return j
+      } else j++
+    }
+    return j
+  }
+  const skipLineComment = (j) => {
+    while (j < n && s[j] !== "\n") j++
+    return j
+  }
+  const spans = []
+  let i = 0
+  while (i < n) {
+    const c = s[i]
+    if (c === '"') {
+      i = skipString(i)
+      continue
+    }
+    if (s.startsWith("/-", i)) {
+      i = skipBlockComment(i)
+      continue
+    }
+    if (s.startsWith("--", i)) {
+      i = skipLineComment(i)
+      continue
+    }
+    if (c === "@" && s[i + 1] === "[") {
+      const attrStart = i
+      let j = i + 2
+      let bracket = 1
+      let paren = 0
+      const commas = []
+      while (j < n && bracket > 0) {
+        const d = s[j]
+        if (d === '"') {
+          j = skipString(j)
+          continue
+        }
+        if (s.startsWith("/-", j)) {
+          j = skipBlockComment(j)
+          continue
+        }
+        if (s.startsWith("--", j)) {
+          j = skipLineComment(j)
+          continue
+        }
+        if (d === "[") bracket++
+        else if (d === "]") {
+          bracket--
+          if (bracket === 0) break
+        } else if (d === "(") paren++
+        else if (d === ")") paren--
+        else if (d === "," && bracket === 1 && paren === 0) commas.push(j)
+        j++
+      }
+      if (bracket !== 0) break // truncated snippet — leave untouched
+      const attrEnd = j + 1
+      const cuts = [attrStart + 2, ...commas.flatMap((k) => [k, k + 1]), attrEnd - 1]
+      const entries = []
+      for (let k = 0; k + 1 < cuts.length; k += 2) entries.push(s.slice(cuts[k], cuts[k + 1]))
+      const isBlueprint = (e) => /^\s*blueprint(\s|["([]|$)/.test(e)
+      const kept = entries.filter((e) => !isBlueprint(e))
+      if (kept.length === entries.length) {
+        i = attrEnd
+        continue
+      }
+      if (kept.length > 0) {
+        spans.push({
+          start: attrStart,
+          end: attrEnd,
+          replacement: "@[" + kept.map((e) => e.trim()).join(", ") + "]",
+        })
+      } else {
+        let a = attrStart
+        let b = attrEnd
+        const lineStart = s.lastIndexOf("\n", attrStart - 1) + 1
+        if (/^\s*$/.test(s.slice(lineStart, attrStart))) {
+          // attribute owns its line(s): remove them wholesale
+          a = lineStart
+          while (b < n && (s[b] === " " || s[b] === "\t")) b++
+          if (s[b] === "\n") b++
+        } else {
+          // inline form: drop the group plus trailing spaces
+          while (b < n && (s[b] === " " || s[b] === "\t")) b++
+        }
+        spans.push({ start: a, end: b, replacement: "" })
+      }
+      i = attrEnd
+      continue
+    }
+    i++
+  }
+  if (!spans.length) return code
+  let out = ""
+  let prev = 0
+  for (const sp of spans) {
+    out += s.slice(prev, sp.start) + sp.replacement
+    prev = sp.end
+  }
+  out += s.slice(prev)
+  return out
+}
+
+// Strip attributes and keep the reported start line aligned with the first
+// line the snippet actually shows (the source link would otherwise deep-link
+// a few lines above the rendered code).
+function strippedSnippet(code, startLine) {
+  const stripped = stripBlueprintAttributes(code)
+  if (stripped === code) return { code, startLine }
+  const first = String(stripped).split("\n", 1)[0]
+  let delta = 0
+  if (first.trim()) {
+    const idx = String(code).split("\n").indexOf(first)
+    if (idx > 0) delta = idx
+  }
+  return { code: stripped, startLine: startLine + delta }
+}
+
 // Slice a declaration's source from disk (file resolved over srcDirs), extending
 // upward through a contiguous doc comment and attribute lines. When the file is
 // absent (deployed site builds have no .lake checkout), falls back to the
@@ -648,13 +794,14 @@ export function declSnippet(decl, srcDirs) {
   }
   if (!abs) {
     if (decl.snippet?.code) {
+      const s = strippedSnippet(decl.snippet.code, decl.snippet.startLine ?? decl.startLine)
       return {
         file: decl.file,
         absPath: null,
         baseDir: null,
-        startLine: decl.snippet.startLine ?? decl.startLine,
+        startLine: s.startLine,
         endLine: decl.endLine,
-        code: decl.snippet.code,
+        code: s.code,
       }
     }
     return null
@@ -677,13 +824,14 @@ export function declSnippet(decl, srcDirs) {
     }
     break
   }
+  const s = strippedSnippet(dedentLines(lines.slice(start, decl.endLine)), start + 1)
   return {
     file: decl.file,
     absPath: abs,
     baseDir,
-    startLine: start + 1,
+    startLine: s.startLine,
     endLine: decl.endLine,
-    code: dedentLines(lines.slice(start, decl.endLine)),
+    code: s.code,
   }
 }
 

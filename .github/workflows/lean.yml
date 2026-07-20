@@ -53,10 +53,26 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
+      # Companion/copy-in adoptions list their root modules in
+      # blueprint.config.json lakeRoots; a dependency package is not a
+      # root-package target, so a plain `lake build` would build nothing and
+      # the extractor below would find no .oleans. Derive the +Module build
+      # args from the config (empty lakeRoots -> default build).
+      - name: Derive Lake build targets from blueprint.config.json
+        id: lakeroots
+        run: |
+          args=$(node -e '
+            const cfg = require("./blueprint.config.json")
+            const bp = (cfg.blueprints && cfg.blueprints[0]) || {}
+            process.stdout.write((bp.lakeRoots || []).map((r) => `+${r}`).join(" "))
+          ')
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
       - name: Build Lean (blueprint chapters + extractor)
         uses: leanprover/lean-action@v1
         with:
           use-github-cache: true
+          build-args: ${{ steps.lakeroots.outputs.args }}
 
       - uses: actions/setup-node@v5
         with:

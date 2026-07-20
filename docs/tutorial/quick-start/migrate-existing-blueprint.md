@@ -103,6 +103,20 @@ There is no `\leanok` to port: every item's status is recomputed from the
 compiled environment on each build, so the migrated blueprint cannot silently
 drift from the code.
 
+### Blueprints authored in Lean (LeanArchitect)
+
+Some projects write the blueprint next to the code instead of in LaTeX:
+[LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) `@[blueprint]`
+attributes carry each node's label, title, and statement on the declaration
+itself, and the project's plan pulls the generated nodes in with
+`\inputleannode` / `\inputleanmodule`. That generation runs fine from this
+workspace once the code is adopted — `lake build <PackageName>:blueprint`
+writes standard leanblueprint TeX under `.lake/build/blueprint/` — so expand
+those references from the generated files into the plan you feed
+`migrate:blueprint`, and everything above applies unchanged. Source snippets
+strip the `@[blueprint ...]` attributes automatically, so an item's
+statement isn't shown a second time as code.
+
 See [the two authoring styles](../../documentation/modes) for how reference
 chapters compare with literate ones, and the
 [chapter grammar](../../documentation/grammar) for the full syntax.

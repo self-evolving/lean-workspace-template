@@ -164,7 +164,14 @@ export function expandMacros(src, table) {
 // is the statement/proof TeX. Marker macros (\leanok, \mathlibok, \notready)
 // are recorded/stripped so they never leak into rendered prose.
 export function parseEnvDirectives(body) {
-  const out = { label: null, leanNames: [], leanok: false, mathlibok: false, uses: [] }
+  const out = {
+    label: null,
+    leanNames: [],
+    leanok: false,
+    mathlibok: false,
+    uses: [],
+    discussion: null,
+  }
   body = body.replace(/\\label\{([^}]*)\}/, (_, v) => {
     out.label = v.trim()
     return ""
@@ -185,6 +192,10 @@ export function parseEnvDirectives(body) {
         .map((s) => s.trim())
         .filter(Boolean),
     )
+    return ""
+  })
+  body = body.replace(/\\discussion\{(\d+)\}/g, (_, v) => {
+    if (out.discussion == null) out.discussion = Number(v)
     return ""
   })
   body = body.replace(/\\leanok\b/g, () => ((out.leanok = true), ""))
