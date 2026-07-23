@@ -8,3 +8,4 @@
 - Blueprint sync bakes declaration snippets into blueprint-data.json; deploy builds must render snippets without .lake checkouts.
 - Quartz browser-script regressions are forced through scripts/run-tests.mjs when npm test receives explicit test files; list required suites there.
 - Blueprint canvas cards use selection as the primary click; page navigation belongs in explicit open/sidebar/popover actions.
+- Handwave is a VS Code editor companion for Lean notes; treat it as complementary to blueprint publishing, not a template replacement.
