@@ -116,7 +116,7 @@ jobs:
       MODEL_REASONING_EFFORT: xhigh
       PR_NUMBER: ${{ inputs.pr_number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false

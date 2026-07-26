@@ -30,7 +30,7 @@ jobs:
     env:
       RUBRICS_REF: ${{ inputs.rubrics_ref || vars.AGENT_RUBRICS_REF || 'agent/rubrics' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false

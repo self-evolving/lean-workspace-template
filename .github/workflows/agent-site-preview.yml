@@ -28,7 +28,7 @@ jobs:
       (startsWith(github.event.pull_request.head.ref, 'agent/') || contains(github.event.pull_request.labels.*.name, 'sepo-preview'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Setup agent runtime
         uses: ./.github/actions/setup-agent-runtime
       # Repo variables are not exported to step env automatically. Forward the
@@ -90,7 +90,7 @@ jobs:
           npm run build
       - name: Upload artifact
         id: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           { name: sepo-preview-site, path: ./public, retention-days: 1, if-no-files-found: error }
       - name: Deploy preview
@@ -147,7 +147,7 @@ jobs:
       # rejects the teardown (e.g. transient 5xx), or closed PRs keep active
       # Preview deployments. `!cancelled()` (not `always()`) so a run superseded
       # via the concurrency group cannot race a fresh deploy's events.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: ${{ !cancelled() }}
       - name: Setup agent runtime
         if: ${{ !cancelled() }}
