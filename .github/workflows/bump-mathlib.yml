@@ -22,7 +22,7 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Check whether this project uses Mathlib
         id: mathlib
@@ -149,7 +149,7 @@ jobs:
           lake exe cache get
           lake build
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         if: steps.mathlib.outputs.present == 'true'
         with:
           node-version: 22
@@ -176,7 +176,7 @@ jobs:
 
       - name: Open or update bump PR
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: automation/bump-mathlib
           delete-branch: true

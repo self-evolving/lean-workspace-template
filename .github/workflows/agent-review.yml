@@ -90,7 +90,7 @@ jobs:
     outputs:
       reviewed_head_sha: ${{ steps.capture.outputs.head_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           token: ${{ github.token }}
@@ -149,7 +149,7 @@ jobs:
             artifact_name: codex-review
             lane: codex-review
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.repository.default_branch }}
@@ -236,7 +236,7 @@ jobs:
             cp "${{ steps.agent.outputs.session_log_file }}" "${{ runner.temp }}/events.jsonl"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ steps.agent.outcome == 'success' }}
         with:
           name: ${{ matrix.artifact_name }}-${{ inputs.pr_number }}
@@ -274,7 +274,7 @@ jobs:
       id-token: write
     runs-on: ${{ fromJson(inputs.runs_on || vars.AGENT_RUNS_ON || '["ubuntu-latest"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           token: ${{ github.token }}
 
@@ -289,7 +289,7 @@ jobs:
 
       - name: Download review artifacts
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/reviews
 
@@ -386,7 +386,7 @@ jobs:
           TARGET_NUMBER: ${{ inputs.pr_number }}
         run: node .agent/dist/cli/post-comment.js
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: agent-review-result-${{ inputs.pr_number }}
           path: |

@@ -19,7 +19,7 @@ jobs:
     if: vars.AGENT_ENABLED != 'false' && github.repository == 'self-evolving/repo'
     runs-on: ${{ fromJson(vars.AGENT_RUNS_ON || '["ubuntu-latest"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           token: ${{ github.token }}
